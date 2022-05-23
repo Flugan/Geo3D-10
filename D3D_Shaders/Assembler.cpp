@@ -1,100 +1,153 @@
 #include "stdafx.h"
+#include "dxcapi.h"
+#include "wrl.h"
 
-using namespace std;
+using Microsoft::WRL::ComPtr;
 
 FILE* failFile = NULL;
-static unordered_map<string, vector<DWORD>> codeBin;
+static map<string, vector<DWORD>> codeBin;
 
-string convertF(DWORD original) {
+string convertF(DWORD original, const char* lit) {
 	char buf[80];
 	char buf2[80];
-
-	float fOriginal = reinterpret_cast<float &>(original);
-	sprintf_s(buf2, 80, "%.9E", fOriginal);
-	int len = strlen(buf2);
-	if (buf2[len - 4] == '-') {
-		int exp = atoi(buf2 + len - 3);
-		switch (exp) {
-		case 1:
-			sprintf_s(buf, 80, "%.9f", fOriginal);
-			break;
-		case 2:
-			sprintf_s(buf, 80, "%.10f", fOriginal);
-			break;
-		case 3:
-			sprintf_s(buf, 80, "%.11f", fOriginal);
-			break;
-		case 4:
-			sprintf_s(buf, 80, "%.12f", fOriginal);
-			break;
-		case 5:
-			sprintf_s(buf, 80, "%.13f", fOriginal);
-			break;
-		case 6:
-			sprintf_s(buf, 80, "%.14f", fOriginal);
-			break;
-		default:
-			sprintf_s(buf, 80, "%.9E", fOriginal);
-			break;
-		}
-	} else {
-		int exp = atoi(buf2 + len - 3);
-		switch (exp) {
-		case 0:
-			sprintf_s(buf, 80, "%.8f", fOriginal);
-			break;
-		default:
-			sprintf_s(buf, 80, "%.8f", fOriginal);
+	vector<DWORD> hex = { 0x7fc00000, 0xffc00000, 0xffff0000, 0x0000ffff, 0x7fffffff,  0xffecc800, 0x7fffff00, 0x7fff7fff, 0x7fffe000,
+		0xffaa5501, 0xffaa5500, 0xffc10000, 0x7fc10000, 0xfffeffff, 0xffe699f1, 0xfffe4000, 0x120000, 0x20000, 0x7fffc000 };
+	bool bHex = false;
+	for (int i = 0; i < hex.size(); i++) {
+		if (original == hex[i]) {
+			bHex = true;
 			break;
 		}
 	}
+	float fOriginal = reinterpret_cast<float&>(original);
+	if (original == 0xFF800000) {
+		sprintf_s(buf, 80, "%s", "-1.#INF00");
+	}
+	else if (original == 0x7F800000) {
+		sprintf_s(buf, 80, "%s", "1.#INF00");
+	}
+	else if (bHex) {
+		sprintf_s(buf, 80, "0x%08x", original);
+	}
+	else if (original < 0xffff) {
+		sprintf_s(buf, 80, "%d", original);
+	}
+	else if (original > 0xffff0000) {
+		sprintf_s(buf, 80, "%d", original);
+	}
+	else {
+			sprintf_s(buf, 80, "%.1f", fOriginal);
+		string s1(buf);
+		if (original == strToDWORD(s1))
+			return s1;
+
+		sprintf_s(buf, 80, "%.2f", fOriginal);
+		string s2(buf);
+		if (original == strToDWORD(s2))
+			return s2;
+
+		sprintf_s(buf, 80, "%.3f", fOriginal);
+		string s3(buf);
+		if (original == strToDWORD(s3))
+			return s3;
+
+		sprintf_s(buf, 80, "%.4f", fOriginal);
+		string s4(buf);
+		if (original == strToDWORD(s4))
+			return s4;
+
+		sprintf_s(buf, 80, "%.5f", fOriginal);
+		string s5(buf);
+		if (original == strToDWORD(s5))
+			return s5;
+
+		sprintf_s(buf, 80, "%.6f", fOriginal);
+		string s6(buf);
+		if (original == strToDWORD(s6))
+			return s6;
+
+		sprintf_s(buf, 80, "%.7f", fOriginal);
+		string s7(buf);
+		if (original == strToDWORD(s7))
+			return s7;
+
+		sprintf_s(buf, 80, "%.8f", fOriginal);
+		string s8(buf);
+		if (original == strToDWORD(s8))
+			return s8;
+
+		sprintf_s(buf, 80, "%.9f", fOriginal);
+		string s9(buf);
+		if (original == strToDWORD(s9))
+			return s9;
+
+		sprintf_s(buf, 80, "%.10f", fOriginal);
+		string s10(buf);
+		if (original == strToDWORD(s10))
+			return s10;
+
+		sprintf_s(buf, 80, "%.9E", fOriginal);
+		string s9E(buf);
+		if (original == strToDWORD(s9E))
+			return s9E;
+	}
 	string sLiteral(buf);
+	
 	DWORD newDWORD = strToDWORD(sLiteral);
 	if (newDWORD != original) {
 		if (failFile == NULL)
 			fopen_s(&failFile, "debug.txt", "wb");
-		FILE *f = failFile;
-		fprintf(f, "%s\n", sLiteral.c_str());
-		fprintf(f, "o:%08X\n", original);
-		fprintf(f, "n:%08X\n", newDWORD);
-		fprintf(f, "\n");
+		FILE* f = failFile;
+		if (f != 0) {
+			fprintf(f, "orig: %s <> %08X\n", lit, original);
+			fprintf(f, "new:  %s <> %08X\n", sLiteral.c_str(), newDWORD);
+			fprintf(f, "\n");
+		}
 	}
 	return sLiteral;
 }
 
 void writeLUT() {
-	FILE* f;
-	fopen_s(&f, "lut.asm", "wb");
-	for (unordered_map<string, vector<DWORD>>::iterator it = codeBin.begin(); it != codeBin.end(); ++it) {
-		fputs(it->first.c_str(), f);
-		fputs(":->", f);
-		vector<DWORD> b = it->second;
-		int nextOperand = 1;
-		for (DWORD i = 0; i < b.size(); i++) {
-			if (i == 0) {
-				char hex[40];
-				shader_ins* ins = (shader_ins*)&b[0];
-				if (ins->_11_23 > 0) {
-					if (ins->extended)
-						sprintf_s(hex, "0x%08X: %d,%d,%d<>%d->", b[0], ins->opcode, ins->_11_23, ins->length, ins->extended);
-					else
-						sprintf_s(hex, "0x%08X: %d,%d,%d->", b[0], ins->opcode, ins->_11_23, ins->length);
-				} else {
-					if (ins->extended)
-						sprintf_s(hex, "0x%08X: %d,%d<>%d->", b[0], ins->opcode, ins->length, ins->extended);
-					else
-						sprintf_s(hex, "0x%08X: %d,%d->", b[0], ins->opcode, ins->length);
+	FILE* f = NULL;
+	if (!codeBin.empty())
+		fopen_s(&f, "lut.asm", "wb");
+	if (f != 0) {
+		for (auto it = codeBin.begin(); it != codeBin.end(); ++it) {
+			::fputs(it->first.c_str(), f);
+			::fputs(":->", f);
+			vector<DWORD> b = it->second;
+			int nextOperand = 1;
+			for (DWORD i = 0; i < b.size(); i++) {
+				if (i == 0) {
+					char hex[40];
+					shader_ins* ins = (shader_ins*)&b[0];
+					if (ins->_11_23 > 0) {
+						if (ins->extended)
+							sprintf_s(hex, "0x%08X: %d,%d,%d<>%d->", b[0], ins->opcode, ins->_11_23, ins->length, ins->extended);
+						else
+							sprintf_s(hex, "0x%08X: %d,%d,%d->", b[0], ins->opcode, ins->_11_23, ins->length);
+					}
+					else {
+						if (ins->extended)
+							sprintf_s(hex, "0x%08X: %d,%d<>%d->", b[0], ins->opcode, ins->length, ins->extended);
+						else
+							sprintf_s(hex, "0x%08X: %d,%d->", b[0], ins->opcode, ins->length);
+					}
+					::fputs(hex, f);
 				}
-				fputs(hex, f);
-			} else {
-				char hex[20];
-				sprintf_s(hex, " 0x%08X", b[i]);
-				fputs(hex, f);
+				else {
+					char hex[20];
+					sprintf_s(hex, " 0x%08X", b[i]);
+					::fputs(hex, f);
+				}
+			}
+			::fputs("\n", f);
+			if (it->first.find("orig") != string::npos) {
+				::fputs("\n", f);
 			}
 		}
-		fputs("\n", f);
+		fclose(f);
 	}
-	fclose(f);
 }
 
 string assembleAndCompare(string s, vector<DWORD> v) {
@@ -104,11 +157,14 @@ string assembleAndCompare(string s, vector<DWORD> v) {
 		s.erase(s.begin());
 		numSpaces++;
 	}
+	int lastStart = 0;
 	int lastLiteral = 0;
 	int lastEnd = 0;
 	vector<DWORD> v2 = assembleIns(s);
 	string sNew = s;
 	string s3;
+	string sLiteral;
+	string sBegin;
 	bool valid = true;
 	if (v2.size() > 0) {
 		if (v2.size() == v.size()) {
@@ -120,154 +176,105 @@ string assembleAndCompare(string s, vector<DWORD> v) {
 					for (int j = 0; j < loopSize; j++) {
 						i++;
 						lastLiteral = sNew.find("{ ", lastLiteral + 1);
-						lastEnd = sNew.find(",", lastLiteral + 1);
-						s3 = sNew.substr(lastLiteral + 2, lastEnd - 2 - lastLiteral);
-						if (v[i] != v2[i]) {
-							string sLiteral = convertF(v[i]);
-							string sBegin = sNew.substr(0, lastLiteral + 2);
-							lastLiteral = sBegin.size();
-							sBegin.append(sLiteral);
-							sBegin.append(sNew.substr(lastEnd));
-							sNew = sBegin;
-						}
+						lastEnd = sNew.find(",", lastLiteral);
+						s3 = sNew.substr(lastLiteral + 2, lastEnd - lastLiteral - 2);
+						sLiteral = convertF(v[i], s3.c_str());
+						sBegin = sNew.substr(0, lastLiteral + 1);
+						sBegin.append(" " + sLiteral + ",");
+
 						i++;
-						lastLiteral = sNew.find(",", lastLiteral + 1);
-						lastEnd = sNew.find(",", lastLiteral + 1);
-						s3 = sNew.substr(lastLiteral + 2, lastEnd - 2 - lastLiteral);
-						if (v[i] != v2[i]) {
-							string sLiteral = convertF(v[i]);
-							string sBegin = sNew.substr(0, lastLiteral + 2);
-							lastLiteral = sBegin.size();
-							sBegin.append(sLiteral);
-							sBegin.append(sNew.substr(lastEnd));
-							sNew = sBegin;
-						}
+						lastLiteral = lastEnd;
+						lastEnd = sNew.find(",", lastEnd + 1);
+						s3 = sNew.substr(lastLiteral + 1, lastEnd - lastLiteral - 1);
+						sLiteral = convertF(v[i], s3.c_str());
+						sBegin.append(" " + sLiteral + ",");
+
 						i++;
-						lastLiteral = sNew.find(",", lastLiteral + 1);
-						lastEnd = sNew.find(",", lastLiteral + 1);
-						s3 = sNew.substr(lastLiteral + 2, lastEnd - 2 - lastLiteral);
-						if (v[i] != v2[i]) {
-							string sLiteral = convertF(v[i]);
-							string sBegin = sNew.substr(0, lastLiteral + 2);
-							lastLiteral = sBegin.size();
-							sBegin.append(sLiteral);
-							sBegin.append(sNew.substr(lastEnd));
-							sNew = sBegin;
-						}
+						lastLiteral = lastEnd;
+						lastEnd = sNew.find(",", lastEnd + 1);
+						s3 = sNew.substr(lastLiteral + 1, lastEnd - lastLiteral - 1);
+						sLiteral = convertF(v[i], s3.c_str());
+						sBegin.append(" " + sLiteral + ",");
+
 						i++;
 						lastLiteral = sNew.find(",", lastLiteral + 1);
 						lastEnd = sNew.find("}", lastLiteral + 1);
-						s3 = sNew.substr(lastLiteral + 2, lastEnd - 2 - lastLiteral);
-						if (v[i] != v2[i]) {
-							string sLiteral = convertF(v[i]);
-							string sBegin = sNew.substr(0, lastLiteral + 2);
-							lastLiteral = sBegin.size();
-							sBegin.append(sLiteral);
-							sBegin.append(sNew.substr(lastEnd));
-							sNew = sBegin;
-						}
+						s3 = sNew.substr(lastLiteral + 2, lastEnd - lastLiteral - 2);
+						sLiteral = convertF(v[i], s3.c_str());
+						sBegin.append(" " + sLiteral);
+						sBegin.append(sNew.substr(lastEnd));
+						sNew = sBegin;
 					}
 					i++;
-				} else if (v[i] == 0x4001) {
+				}
+				else if (v2[i] == 0x12404001) {
 					i++;
-					lastLiteral = sNew.find("l(", lastLiteral + 1);
+					lastStart = sNew.find("l(", lastStart + 1);
+					lastLiteral = lastStart;
 					lastEnd = sNew.find(")", lastLiteral);
-					if (v[i] != v2[i]) {
-						string sLiteral = convertF(v[i]);
-						string sBegin = sNew.substr(0, lastLiteral + 2);
-						lastLiteral = sBegin.size();
-						sBegin.append(sLiteral);
-						sBegin.append(sNew.substr(lastEnd));
-						sNew = sBegin;
-					}
-				} else if (v[i] == 0x4002) {
+					s3 = sNew.substr(lastLiteral + 2, lastEnd - lastLiteral - 2);
+					sLiteral = convertF(v[i], s3.c_str());
+					sBegin = sNew.substr(0, lastLiteral + 2);
+					sBegin.append(sLiteral);
+					sBegin.append(sNew.substr(lastEnd));
+					sNew = sBegin;
+				}
+				else if (v2[i] == 0x12404002) {
 					i++;
-					lastLiteral = sNew.find("l(", lastLiteral);
+					lastStart = sNew.find("l(", lastStart + 1);
+					lastLiteral = lastStart;
 					lastEnd = sNew.find(",", lastLiteral);
-					if (v[i] != v2[i]) {
-						string sLiteral = convertF(v[i]);
-						string sBegin = sNew.substr(0, lastLiteral + 2);
-						lastLiteral = sBegin.size();
-						sBegin.append(sLiteral);
-						sBegin.append(sNew.substr(lastEnd));
-						sNew = sBegin;
-					}
+					s3 = sNew.substr(lastLiteral + 2, lastEnd - lastLiteral - 2);
+					sLiteral = convertF(v[i], s3.c_str());
+					sBegin = sNew.substr(0, lastLiteral + 2);
+					sBegin.append(sLiteral + ", ");
+
 					i++;
-					lastLiteral = sNew.find(",", lastLiteral + 1);
-					lastEnd = sNew.find(",", lastLiteral + 1);
-					if (v[i] != v2[i]) {
-						string sLiteral = convertF(v[i]);
-						string sBegin = sNew.substr(0, lastLiteral + 2);
-						lastLiteral = sBegin.size();
-						sBegin.append(sLiteral);
-						sBegin.append(sNew.substr(lastEnd));
-						sNew = sBegin;
-					}
+					lastLiteral = lastEnd;
+					lastEnd = sNew.find(",", lastEnd + 1);
+					s3 = sNew.substr(lastLiteral + 1, lastEnd - lastLiteral - 1);
+					sLiteral = convertF(v[i], s3.c_str());
+					sBegin.append(sLiteral + ", ");
+
 					i++;
-					lastLiteral = sNew.find(",", lastLiteral + 1);
-					lastEnd = sNew.find(",", lastLiteral + 1);
-					if (v[i] != v2[i]) {
-						string sLiteral = convertF(v[i]);
-						string sBegin = sNew.substr(0, lastLiteral + 2);
-						lastLiteral = sBegin.size();
-						sBegin.append(sLiteral);
-						sBegin.append(sNew.substr(lastEnd));
-						sNew = sBegin;
-					}
+					lastLiteral = lastEnd;
+					lastEnd = sNew.find(",", lastEnd + 1);
+					s3 = sNew.substr(lastLiteral + 1, lastEnd - lastLiteral - 1);
+					sLiteral = convertF(v[i], s3.c_str());
+					sBegin.append(sLiteral + ", ");
+
 					i++;
-					lastLiteral = sNew.find(",", lastLiteral + 1);
-					lastEnd = sNew.find(")", lastLiteral + 1);
-					if (v[i] != v2[i]) {
-						string sLiteral = convertF(v[i]);
-						string sBegin = sNew.substr(0, lastLiteral + 2);
-						sBegin.append(sLiteral);
-						lastLiteral = sBegin.size();
-						sBegin.append(sNew.substr(lastEnd));
-						sNew = sBegin;
-					}
-				} else if (v[i] != v2[i])
+					lastLiteral = lastEnd;
+					lastEnd = sNew.find(")", lastEnd + 1);
+					s3 = sNew.substr(lastLiteral + 1, lastEnd - lastLiteral - 1);
+					sLiteral = convertF(v[i], s3.c_str());
+					sBegin.append(sLiteral);
+					sBegin.append(sNew.substr(lastEnd));
+					sNew = sBegin;
+				}
+				else if (v[i] != v2[i])
 					valid = false;
 			}
-		} else {
+		}
+		else {
 			valid = false;
 		}
 		if (valid) {
 			s2 = "!success ";
 			s2.append(s);
-			// codeBin[s2] = v;
+			//codeBin[s2] = v;
 		} else {
-			if (v.size() == (v2.size() + 1)) {
-				valid = true;
-				int j = 0;
-				for (int i = 1; i < v2.size() && valid; i++) {
-					if (v[i + j] != v2[i]) {
-						if (v[i + 1] == 0x1 && (v[i] & 0x7FFFFFFF) == v2[i]) {
-							j = 1;
-						} else {
-							valid = false;
-						}
-					}
-				}
-			}
-			if (valid) {
-				s2 = "!success ";
-				s2.append(s);
-				// codeBin[s2] = v;
-			} else {
-				s2 = s;
-				s2.append(" orig");
-				codeBin[s2] = v;
-				s2 = s;
-				s2.append(" fail");
-				codeBin[s2] = v2;
-			}
+			s2 = s;
+			s2.append(" orig");
+			codeBin[s2] = v;
+			s2 = s;
+			s2.append(" fail");
+			codeBin[s2] = v2;
 		}
 	} else {
-		if (s != "undecipherable custom data") {
-			s2 = "!missing ";
-			s2.append(s);
-			codeBin[s2] = v;
-		}
+		s2 = "!missing ";
+		s2.append(s);
+		codeBin[s2] = v;
 	}
 	string ret = "";
 	for (int i = 0; i < numSpaces; i++) {
@@ -275,9 +282,40 @@ string assembleAndCompare(string s, vector<DWORD> v) {
 	}
 	ret.append(sNew);
 	return ret;
-}
+} 
 
 vector<byte> disassembler(vector<byte> buffer) {
+	char* asmBuffer = nullptr;
+	int asmSize = 0;
+	ID3DBlob* pDissassembly;
+	HRESULT hr = D3DDisassemble(buffer.data(), buffer.size(), 0, NULL, &pDissassembly);
+	if (hr == S_OK) {
+		asmBuffer = (char*)pDissassembly->GetBufferPointer();
+		asmSize = pDissassembly->GetBufferSize();
+	}
+	else {
+		/*
+		ComPtr<IDxcCompiler3> pCompiler;
+		DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(pCompiler.GetAddressOf()));
+		DxcBuffer buf = {};
+		buf.Encoding = CP_ACP;
+		buf.Ptr = buffer.data();
+		buf.Size = buffer.size();
+		ComPtr<IDxcResult> pRes;
+		HRESULT hr = pCompiler->Disassemble(&buf, IID_PPV_ARGS(pRes.GetAddressOf()));
+		vector<byte> ret;
+		if (hr == S_OK) {
+			ComPtr<IDxcBlob> pBlob;
+			pRes->GetResult(pBlob.GetAddressOf());
+			byte* pASM = (byte*)pBlob->GetBufferPointer();
+			for (size_t i = 0; i < pBlob->GetBufferSize(); i++) {
+				ret.push_back(pASM[i]);
+			}
+		}
+		return ret;
+		*/
+	}
+
 	byte fourcc[4];
 	DWORD fHash[4];
 	DWORD one;
@@ -298,24 +336,16 @@ vector<byte> disassembler(vector<byte> buffer) {
 	pPosition += 4;
 	chunkOffsets.resize(numChunks);
 	std::memcpy(chunkOffsets.data(), pPosition, 4 * numChunks);
-
-	char* asmBuffer;
-	int asmSize;
-	vector<byte> asmBuf;
-	ID3DBlob* pDissassembly;
-	HRESULT ok = D3DDisassemble(buffer.data(), buffer.size(), 0, NULL, &pDissassembly);
-	if (ok == S_OK) {
-		asmBuffer = (char*)pDissassembly->GetBufferPointer();
-		asmSize = pDissassembly->GetBufferSize();
-	}
-	byte* codeByteStart;
+	byte* codeByteStart = 0;
 	int codeChunk = 0;
+	
 	for (DWORD i = 1; i <= numChunks; i++) {
 		codeChunk = numChunks - i;
-		codeByteStart = buffer.data() + chunkOffsets[numChunks - i];
+		codeByteStart = buffer.data() + chunkOffsets[codeChunk];
 		if (memcmp(codeByteStart, "SHEX", 4) == 0 || memcmp(codeByteStart, "SHDR", 4) == 0)
 			break;
 	}
+
 	vector<string> lines = stringToLines(asmBuffer, asmSize);
 	DWORD* codeStart = (DWORD*)(codeByteStart + 8);
 	bool codeStarted = false;
@@ -326,8 +356,10 @@ vector<byte> disassembler(vector<byte> buffer) {
 	for (DWORD i = 0; i < lines.size(); i++) {
 		string s = lines[i];
 		if (memcmp(s.c_str(), "//", 2) == 0 || memcmp(s.c_str(), "#line", 5) == 0 || s == "") {
+			lines[i] = s;
 			continue;
-		} else {
+		}
+		else {
 			vector<DWORD> v;
 			if (!codeStarted) {
 				if (s.size() > 0 && s[0] != ' ') {
@@ -337,11 +369,16 @@ vector<byte> disassembler(vector<byte> buffer) {
 					string sNew = assembleAndCompare(s, v);
 					lines[i] = sNew;
 				}
-			} else if (s.find("{ {") < s.size()) {
+				else {
+					lines[i] = s;
+				}
+			}
+			else if (s.find("{ {") < s.size()) {
 				s2 = s;
 				multiLine = true;
 				multiLines = 1;
-			} else if (s.find("} }") < s.size()) {
+			}
+			else if (s.find("} }") < s.size()) {
 				s2.append("\n");
 				s2.append(s);
 				s = s2;
@@ -360,15 +397,16 @@ vector<byte> disassembler(vector<byte> buffer) {
 				string sNew = assembleAndCompare(s, v);
 				auto sLines = stringToLines(sNew.c_str(), sNew.size());
 				int startLine = i - sLines.size() + 1;
-				for (int j = 0; j < sLines.size(); j++) {
+				for (size_t j = 0; j < sLines.size(); j++) {
 					lines[startLine + j] = sLines[j];
 				}
-				//lines[i] = sNew;
-			} else if (multiLine) {
+			}
+			else if (multiLine) {
 				s2.append("\n");
 				s2.append(s);
 				multiLines++;
-			} else if (s.size() > 0) {
+			}
+			else if (s.size() > 0) {
 				shader_ins* ins = (shader_ins*)codeStart;
 				v.push_back(*codeStart);
 				codeStart++;
@@ -377,28 +415,14 @@ vector<byte> disassembler(vector<byte> buffer) {
 					v.push_back(*codeStart);
 					codeStart++;
 				}
-				string sNew;
-				if (s == "undecipherable custom data") {
-					string prev = lines[i - 1];
-					if (prev == "ret ")
-						v.clear();
-					if (v.size() == 1) {
-						ins = (shader_ins*)++codeStart;
-						while (ins->length == 0) {
-							ins = (shader_ins*)++codeStart;
-						}
-					}
-					sNew = "";
-				} else {
-					sNew = assembleAndCompare(s, v);
-				}
+				string sNew = assembleAndCompare(s, v);
 				lines[i] = sNew;
 			}
 		}
 	}
 	vector<byte> ret;
-	for (int i = 0; i < lines.size(); i++) {
-		for (int j = 0; j < lines[i].size(); j++) {
+	for (size_t i = 0; i < lines.size(); i++) {
+		for (size_t j = 0; j < lines[i].size(); j++) {
 			ret.insert(ret.end(), lines[i][j]);
 		}
 		ret.insert(ret.end(), '\n');
@@ -407,8 +431,8 @@ vector<byte> disassembler(vector<byte> buffer) {
 }
 
 void handleSwizzle(string s, token_operand* tOp, bool special = false) {
-	if (special == true){
-		// Mask
+	if (special) {
+		tOp->sel = 0;
 		tOp->mode = 0; // Mask
 		if (s.size() > 0 && s[0] == 'x') {
 			tOp->sel |= 0x1;
@@ -427,24 +451,8 @@ void handleSwizzle(string s, token_operand* tOp, bool special = false) {
 			s.erase(s.begin());
 		}
 		return;
-	} else if (s.size() == 0) {
-		tOp->mode = 0;
-		tOp->comps_enum = 0;
-		return;
-	} else if(s.size() == 4) {
-		// Swizzle
-		tOp->mode = 1; // Swizzle
-		for (int i = 0; i < 4; i++) {
-			if (s[i] == 'x')
-				tOp->sel |= 0 << (2 * i);
-			if (s[i] == 'y')
-				tOp->sel |= 1 << (2 * i);
-			if (s[i] == 'z')
-				tOp->sel |= 2 << (2 * i);
-			if (s[i] == 'w')
-				tOp->sel |= 3 << (2 * i);
-		}
-	} else if (s.size() == 1){
+	}
+	if (s.size() == 1) {
 		tOp->mode = 2; // Scalar
 		if (s[0] == 'x')
 			tOp->sel = 0;
@@ -454,42 +462,35 @@ void handleSwizzle(string s, token_operand* tOp, bool special = false) {
 			tOp->sel = 2;
 		if (s[0] == 'w')
 			tOp->sel = 3;
-	} else {
-		// Mask
-		tOp->mode = 0; // Mask
-		if (s.size() > 0 && s[0] == 'x') {
-			tOp->sel |= 0x1;
-			s.erase(s.begin());
-		}
-		if (s.size() > 0 && s[0] == 'y') {
-			tOp->sel |= 0x2;
-			s.erase(s.begin());
-		}
-		if (s.size() > 0 && s[0] == 'z') {
-			tOp->sel |= 0x4;
-			s.erase(s.begin());
-		}
-		if (s.size() > 0 && s[0] == 'w') {
-			tOp->sel |= 0x8;
-			s.erase(s.begin());
-		}
+		return;
 	}
+	// Swizzle
+	tOp->sel = 0;
+	tOp->mode = 1; // Swizzle
+	for (size_t i = 0; i < s.size(); i++) {
+		if (s[i] == 'x')
+			tOp->sel |= 0 << (2 * i);
+		if (s[i] == 'y')
+			tOp->sel |= 1 << (2 * i);
+		if (s[i] == 'z')
+			tOp->sel |= 2 << (2 * i);
+		if (s[i] == 'w')
+			tOp->sel |= 3 << (2 * i);
+	}
+	return;
 }
 
 DWORD strToDWORD(string s) {
-	if (s == "-1.#IND0000")
-		return 0xFFC00000;
-	if (s == "1.#INF0000")
-		return 0x7F800000;
-	if (s == "-1.#INF0000")
+	if (s == "-1.#INF00") {
 		return 0xFF800000;
-	if (s == "-1.#QNAN000")
-		return 0xFFC10000;
+	}
+	if (s == "1.#INF00") {
+		return 0x7F800000;
+	}
 	if (s.substr(0, 2) == "0x") {
 		DWORD decimalValue;
 		sscanf_s(s.c_str(), "0x%x", &decimalValue);
 		return decimalValue;
-		
 	}
 	if (s.find('.') < s.size()) {
 		float f = (float)atof(s.c_str());
@@ -507,7 +508,6 @@ vector<DWORD> assembleOp(string s, bool special = false) {
 	DWORD index = 0;
 	DWORD value = 0;
 	token_operand* tOp = (token_operand*)&op;
-	tOp->comps_enum = 2; // 4
 	string bPoint;
 	num = atoi(s.c_str());
 	if (num != 0) {
@@ -525,116 +525,143 @@ vector<DWORD> assembleOp(string s, bool special = false) {
 		tOp->extended = 1;
 		ext |= 0x81;
 	}
+	size_t pos = s.find(" {min16f}");
+	if (pos < s.size()) {
+		s = s.substr(0, pos);
+		tOp->extended = 1;
+		ext |= 0x4001;
+	}
+	pos = s.find(" {min16u}");
+	if (pos < s.size()) {
+		s = s.substr(0, pos);
+		tOp->extended = 1;
+		ext |= 0x14001;
+	}
+	pos = s.find(" {min16f as def32}");
+	if (pos < s.size()) {
+		s = s.substr(0, pos);
+		tOp->extended = 1;
+		ext |= 0x4001;
+	}
+	pos = s.find(" {min16u as def32}");
+	if (pos < s.size()) {
+		s = s.substr(0, pos);
+		tOp->extended = 1;
+		ext |= 0x14001;
+	}
+	pos = s.find(" {def32 as min16f}");
+	if (pos < s.size()) {
+		s = s.substr(0, pos);
+	}
+	pos = s.find(" {def32 as min16u}");
+	if (pos < s.size()) {
+		s = s.substr(0, pos);
+	}
+	pos = s.find(" { nonuniform }");
+	if (pos < s.size()) {
+		s = s.substr(0, pos);
+		tOp->extended = 1;
+		ext |= 0x20001;
+	}
 	if (tOp->extended) {
 		v.push_back(ext);
 	}
-	if (s.find('.') != string::npos)
-		bPoint = s.substr(0, s.find('.'));
-	else
-		bPoint = s;
+	tOp->comps_enum = 2;
 	if (s == "null") {
-		v.push_back(0xD000);
-		return v;
+		op = 0xD000;
 	}
-	if (s == "oDepth") {
-		v.push_back(0xC001);
-		return v;
+	else if (s == "oDepth") {
+		op = 0xC001;
 	}
-	if (s == "oDepthLE") {
-		v.push_back(0x27001);
-		return v;
+	else if (s == "oDepthLE") {
+		op = 0x27001;
 	}
-	if (s == "oDepthGE") {
-		v.push_back(0x00026001);
-		return v;
+	else if (s == "oDepthGE") {
+		op = 0x26001;
 	}
-	if (s == "vOutputControlPointID") {
-		v.push_back(0x16001);
-		return v;
+	else if (s == "vOutputControlPointID") {
+		if (special)
+			op = 0x16000;
+		else
+			op = 0x16001;
 	}
-	if (s == "oMask") {
-		v.push_back(0xF001);
-		return v;
+	else if (s == "oMask") {
+		op = 0xF001;
 	}
-	if (s == "vPrim") {
-		v.push_back(0xB001);
-		return v;
+	else if (s == "vPrim") {
+		if (special)
+			op = 0xB000;
+		else
+			op = 0xB001;
 	}
-	if (bPoint == "vForkInstanceID") {
-		bool ext = tOp->extended;
-		op = 0x17002;
+	else if (s.find("vForkInstanceID") != string::npos) {
+		op |= 0x17000;
+		if (s == "vForkInstanceID") {
+			if (special) {
+				tOp->comps_enum = 0;
+			}
+			else {
+				tOp->comps_enum = 1;
+			}
+		}
+		else
+			handleSwizzle(s.substr(s.find('.') + 1), tOp, special);
+	}
+	else if (s.find("vCoverage") != string::npos) {
+		op |= 0x23000;
+		if (s == "vCoverage")
+			if (special) {
+				tOp->comps_enum = 1;
+			}
+			else {
+				tOp->comps_enum = 0;
+			}
+		else
+			handleSwizzle(s.substr(s.find('.') + 1), tOp, special);
+	}
+	else if (s.find("vDomain") != string::npos) {
+		op |= 0x1C000;
 		handleSwizzle(s.substr(s.find('.') + 1), tOp, special);
-		if (bPoint == s)
-			op = 0x17001;
-		if (ext) tOp->extended = 1;
-		v.insert(v.begin(), op);
-		return v;
 	}
-	if (bPoint == "vCoverage") {
-		op = 0x23002;
+	else if (s.find("rasterizer") != string::npos) {
+		op |= 0xE00;
 		handleSwizzle(s.substr(s.find('.') + 1), tOp, special);
-		v.push_back(op);
-		return v;
 	}
-	if (bPoint == "vDomain") {
-		bool ext = tOp->extended;
-		op = 0x1C002;
+	else if (s.find("vThreadGroupID") != string::npos) {
+		op |= 0x21000;
 		handleSwizzle(s.substr(s.find('.') + 1), tOp, special);
-		if (ext) tOp->extended = 1;
-		v.insert(v.begin(), op);
-		return v;
 	}
-	if (bPoint == "rasterizer") {
-		op = 0xE002;
+	else if (s.find("vThreadIDInGroupFlattened") != string::npos) {
+		op |= 0x24000;
+		if (s == "vThreadIDInGroupFlattened")
+			tOp->comps_enum = 0;
+		else
+			handleSwizzle(s.substr(s.find('.') + 1), tOp, special);
+	}
+	else if (s.find("vThreadIDInGroup") != string::npos) {
+		op |= 0x22000;
 		handleSwizzle(s.substr(s.find('.') + 1), tOp, special);
-		v.push_back(op);
-		return v;
 	}
-	if (bPoint == "vThreadGroupID") {
-		op = 0x21002;
+	else if (s.find("vThreadID") != string::npos) {
+		op |= 0x20000;
 		handleSwizzle(s.substr(s.find('.') + 1), tOp, special);
-		v.push_back(op);
-		return v;
 	}
-	if (bPoint == "vThreadIDInGroup") {
-		bool ext = tOp->extended;
-		op = 0x22002;
-		handleSwizzle(s.substr(s.find('.') + 1), tOp, special);
-		if (ext) tOp->extended = 1;
-		v.insert(v.begin(), op);
-		return v;
-	}
-	if (bPoint == "vThreadID") {
-		bool ext = tOp->extended;
-		op = 0x20002;
-		handleSwizzle(s.substr(s.find('.') + 1), tOp, special);
-		if (ext) tOp->extended = 1;
-		v.insert(v.begin(), op);
-		return v;
-	}
-	if (bPoint == "vThreadIDInGroupFlattened") {
-		bool ext = tOp->extended;
-		op = 0x24002;
-		handleSwizzle(s.substr(s.find('.') + 1), tOp, special);
-		if (bPoint == s)
-			op = 0x24001;
-		if (ext) tOp->extended = 1;
-		v.insert(v.begin(), op);
-		return v;
-	}
-	if (s[0] == 'C' && s[1] == 'B') { s[0] = 'c'; s[1] = 'b'; }
-	if (s[0] == 'i' && s[1] == 'c' && s[2] == 'b' || s[0] == 'c' && s[1] == 'b' || s[0] == 'x' || s[0] == 'o' || s[0] == 'v') {
-		tOp->num_indices = 2;
-		if (s[0] == 'x') {
-			tOp->file = 3;
-			s.erase(s.begin());
-		} else if (s[0] == 'o') {
+	else {
+		if (s[0] == 'U') { s[0] = 'u'; }
+		if (s[0] == 'S') { s[0] = 's'; }
+		if (s[0] == 'C' && s[1] == 'B') { s[0] = 'c'; s[1] = 'b'; }
+
+		string r(s);
+
+		bool keep = false;
+
+		if (s[0] == 'o') {
 			tOp->file = 2;
-			tOp->num_indices = 1;
-			s.erase(s.begin());
+		} else if (s[0] == 'x') {
+			tOp->file = 3;
 		} else if (s[0] == 'v') {
 			tOp->file = 1;
-			if (s.size() > 4 && s[1] == 'i' && s[2] == 'c' && s[3] == 'p')  { // vicp
+			if (s.size() > 4 && s[1] == 'i' && s[2] == 'c' && s[3] == 'p') { // vicp
 				tOp->file = 0x19;
 				s.erase(s.begin());
 				s.erase(s.begin());
@@ -644,189 +671,193 @@ vector<DWORD> assembleOp(string s, bool special = false) {
 				s.erase(s.begin());
 				s.erase(s.begin());
 				s.erase(s.begin());
-			} else if (s[1] == 'p' && s[2] == 'c') {
+			} else if (s[1] == 'p' && s[2] == 'c') { // vpc
 				tOp->file = 0x1B;
 				s.erase(s.begin());
 				s.erase(s.begin());
 			}
-			s.erase(s.begin());
-			tOp->num_indices = 1;
-			int start = s.find("][");
-			if (start != string::npos) {
-				int end = s.find("]", start + 1);
-				string index0 = s.substr(s.find("[") + 1, start - 1);
-				string index1 = s.substr(start + 2, end - start - 2);
-				if (index0.find("+") != string::npos) {
-					string sReg = index0.substr(0, index0.find(" + "));
-					string sAdd = index0.substr(index0.find(" + ") + 3);
-					vector<DWORD> reg = assembleOp(sReg);
-					tOp->num_indices = 2;
-					tOp->index0_repr = 2;
-					int iAdd = atoi(sAdd.c_str());
-					if (iAdd) tOp->index0_repr = 3;
-					if (index1.find("+") != string::npos) {
-						string sReg2 = index1.substr(0, index1.find(" + "));
-						string sAdd2 = index1.substr(index1.find(" + ") + 3);
-						vector<DWORD> reg2 = assembleOp(sReg2);
-						tOp->index1_repr = 2;
-						int iAdd2 = atoi(sAdd.c_str());
-						if (iAdd2) tOp->index1_repr = 3;
-						string swizzle = s.substr(s.find("].") + 2);
-						handleSwizzle(swizzle, tOp);
-						v.insert(v.begin(), op);
-						if (iAdd) v.push_back(iAdd);
-						v.push_back(reg[0]);
-						v.push_back(reg[1]);
-						if (iAdd2) v.push_back(iAdd2);
-						v.push_back(reg2[0]);
-						v.push_back(reg2[1]);
-						return v;
-					}
-					string swizzle = s.substr(s.find("].") + 2);
-					handleSwizzle(swizzle, tOp);
-					v.insert(v.begin(), op);
-					if (iAdd) v.push_back(iAdd);
-					v.push_back(reg[0]);
-					v.push_back(reg[1]);
-					v.push_back(atoi(index1.c_str()));
-					return v;
-				}
-				tOp->num_indices = 2;
-				string swizzle = s.substr(s.find('.') + 1);
-				handleSwizzle(swizzle, tOp, special);
-				v.insert(v.begin(), op);
-				v.push_back(atoi(index0.c_str()));
-				v.push_back(atoi(index1.c_str()));
-				return v;
-			}
+		} else if (s[0] == 'r') {
+			tOp->file = 0;
+		} else if (s[0] == 's') {
+			tOp->file = 6;
+		} else if (s[0] == 'T') {
+			tOp->file = 7;
+			keep = true;
+		} else if (s[0] == 't') {
+			tOp->file = 7;
+		} else if (s[0] == 'g') {
+			tOp->file = 0x1F;
+		} else if (s[0] == 'u') {
+			tOp->file = 0x1E;
+		} else if (s[0] == 'm') {
+			tOp->file = 0x10;
+		} else if (s[0] == 'l') {
+			tOp->file = 4;
 		} else if (s[0] == 'i') {
 			tOp->file = 9;
 			s.erase(s.begin());
 			s.erase(s.begin());
-			s.erase(s.begin());
-			tOp->num_indices = 1;
-		} else {
+		} else if (s[0] == 'c') {
 			tOp->file = 8;
 			s.erase(s.begin());
-			s.erase(s.begin());
 		}
-		string sNum;
-		bool hasIndex = false;
-		if (s.find("[") < s.size()) {
-			sNum = s.substr(0, s.find('['));
-			hasIndex = true;
-		} else {
-			sNum = s.substr(0, s.find('.'));
-		}
-		string index;
-		if (hasIndex) {
-			int start = s.find('[');
-			int end = s.find(']', start);
-			index = s.substr(start + 1, end - start - 1);
-		}
-		if (hasIndex) {
-			if (index.find('+') < index.size()) {
-				string s2 = index.substr(index.find('+') + 2);
-				DWORD idx = atoi(s2.c_str());
-				string s3 = index.substr(0, index.find('+') - 1);
-				vector<DWORD> reg = assembleOp(s3);
-				if (sNum.size() > 0) {
-					num = atoi(sNum.c_str());
-					v.push_back(num);
-				}
-				if (idx != 0) {
-					v.push_back(idx);
-					if (sNum.size() > 0)
-						tOp->index1_repr = 3; // Reg + imm
-					else
-						tOp->index0_repr = 3; // Reg + imm
-				} else {
-					if (sNum.size() > 0)
-						tOp->index1_repr = 2; // Reg;
-					else
-						tOp->index0_repr = 2; // Reg;
-				}
-				for (DWORD i = 0; i < reg.size(); i++) {
-					v.push_back(reg[i]);
-				}
-				handleSwizzle(s.substr(s.find("].") + 2), tOp, special);
+		s.erase(s.begin());
 
-				v.insert(v.begin(), op);
-				return v;
-			} else {
-				DWORD idx = atoi(index.c_str());
-				num = atoi(sNum.c_str());
+		tOp->num_indices = 1;
+		tOp->comps_enum = 2;
+
+		if (s.find("[") < s.size()) {
+			int pos = s.find("[");
+			string sNum = s.substr(0, pos);
+			if (sNum.size() > 0) {
+				int num = atoi(sNum.c_str());
 				v.push_back(num);
-				v.push_back(idx);
-				if (s.find('.') < s.size()) {
-					handleSwizzle(s.substr(s.find('.') + 1), tOp, special);
-				} else {
-					tOp->mode = 1; // Swizzle
-					tOp->sel = 0xE4;
-				}
-				v.insert(v.begin(), op);
-				return v;
+				tOp->num_indices++;
 			}
-		} else {
-			num = atoi(sNum.c_str());
+			tOp->sel = 0xE4;
+			tOp->mode = 1;
+			int pos2 = s.find_first_of("]");
+			string index = s.substr(pos + 1, pos2 - pos - 1);
+			if (index.find(":") < index.size()) {
+				tOp->num_indices++;
+				int colon = index.find(":");
+				string idx1 = index.substr(0, colon);
+				string idx2 = index.substr(colon + 1);
+
+				int iIdx = atoi(idx1.c_str());
+				v.push_back(iIdx);
+
+				if (idx2 == "*") {
+					v.push_back(0xFFFFFFFF);
+				}
+				else {
+					int iIdx2 = atoi(idx2.c_str());
+					v.push_back(iIdx2);
+				}
+			}
+			else if (index.find("+") < index.size()) {
+				int plusPos = index.find("+");
+				string sOp = index.substr(0, plusPos - 1);
+				string sAdd = index.substr(plusPos + 2);
+				int iAdd = atoi(sAdd.c_str());
+				vector<DWORD> reg = assembleOp(sOp);
+				if (sNum.size() > 0) {
+					if (iAdd) {
+						v.push_back(iAdd);
+						tOp->index1_repr = 3;
+					}
+					else {
+						tOp->index1_repr = 2;
+					}
+				}
+				else {
+					if (iAdd) {
+						v.push_back(iAdd);
+						tOp->index0_repr = 3;
+					}
+					else {
+						tOp->index0_repr = 2;
+					}
+				}
+				
+				v.push_back(reg[0]);
+				v.push_back(reg[1]);
+			}
+			else {
+				int iIdx = atoi(index.c_str());
+				v.push_back(iIdx);
+			}
+			if (s.find("][") < s.size()) {
+				if (tOp->num_indices < 3)
+					tOp->num_indices++;
+				size_t pos4 = s.find("][");
+				size_t pos5 = s.find_last_of("]");
+				string index2 = s.substr(pos4 + 2, pos5 - pos4 - 2);
+				if (index2.find("+") < index2.size()) {
+					tOp->num_indices=3;
+					size_t plusPos = index2.find("+");
+					string sOp = index2.substr(0, plusPos - 1);
+					string sAdd = index2.substr(plusPos + 2);
+					int iAdd = atoi(sAdd.c_str());
+					vector<DWORD> reg = assembleOp(sOp);
+					if (iAdd) {
+						v.push_back(iAdd);
+						tOp->index2_repr = 3;
+					}
+					else {
+						tOp->index2_repr = 2;
+					}
+					v.push_back(reg[0]);
+					v.push_back(reg[1]);
+				}
+				else {
+					int iIdx = atoi(index2.c_str());
+					v.push_back(iIdx);
+				}
+			}
+			if (s.find("].") < s.size()) {
+				int pos = s.find("].");
+				string swizzle = s.substr(pos + 2);
+				handleSwizzle(swizzle, tOp, special);
+			}
+			else {
+				if (!keep) {
+					tOp->comps_enum = 0;
+					tOp->mode = 0;
+					tOp->sel = 0;
+				}
+				if (special) {
+					tOp->comps_enum = 2;
+					handleSwizzle("xyzw", tOp, false);
+				}
+			}
+		}
+		else if (s[0] == '(') {
+			tOp->index0_repr = 1;
+			tOp->index1_repr = 1;
+			tOp->index2_repr = 1;
+			tOp->num_indices = 0;
+			tOp->mode = 0;
+			tOp->comps_enum = 1;
+			if (s.find(",") < s.size()) {
+				tOp->comps_enum = 2;
+				s.erase(s.begin());
+				string s1 = s.substr(0, s.find(","));
+				s = s.substr(s.find(",") + 1);
+				if (s[0] == ' ')
+					s.erase(s.begin());
+				string s2 = s.substr(0, s.find(","));
+				s = s.substr(s.find(",") + 1);
+				if (s[0] == ' ')
+					s.erase(s.begin());
+				string s3 = s.substr(0, s.find(","));
+				s = s.substr(s.find(",") + 1);
+				if (s[0] == ' ')
+					s.erase(s.begin());
+				string s4 = s.substr(0, s.find(")"));
+				v.push_back(strToDWORD(s1));
+				v.push_back(strToDWORD(s2));
+				v.push_back(strToDWORD(s3));
+				v.push_back(strToDWORD(s4));
+			}
+			else {
+				s.erase(s.begin());
+				s.pop_back();
+				v.push_back(strToDWORD(s));
+			}
+		}
+		else if (s.find(".") < s.size()) {
+			num = atoi(s.substr(0, s.find('.')).c_str());
 			v.push_back(num);
 			handleSwizzle(s.substr(s.find('.') + 1), tOp, special);
-			v.insert(v.begin(), op);
-			return v;
 		}
-	} else if (s[0] == 'l') {
-		string sOrig = s;;
-		tOp->file = 4;
-		s.erase(s.begin());
-		if (s.find(",") < s.size()) {
-			s.erase(s.begin());
-			string s1 = s.substr(0, s.find(","));
-			s = s.substr(s.find(",") + 1);
-			if (s[0] == ' ')
-				s.erase(s.begin());
-			string s2 = s.substr(0, s.find(","));
-			s = s.substr(s.find(",") + 1);
-			if (s[0] == ' ')
-				s.erase(s.begin());
-			string s3 = s.substr(0, s.find(","));
-			s = s.substr(s.find(",") + 1);
-			if (s[0] == ' ')
-				s.erase(s.begin());
-			string s4 = s.substr(0, s.find(")"));
-
-			v.push_back(strToDWORD(s1));
-			v.push_back(strToDWORD(s2));
-			v.push_back(strToDWORD(s3));
-			v.push_back(strToDWORD(s4));
-		} else {
-			tOp->comps_enum = 1; // 1
-			s.erase(s.begin());
-			s.pop_back();
-			v.push_back(strToDWORD(s));
+		else {
+			num = atoi(s.c_str());
+			v.push_back(num);
+			tOp->comps_enum = 0;
 		}
-		v.insert(v.begin(), op);
-		return v;
-	} else if (s[0] == 'r') {
-		tOp->file = 0;
-	} else if (s[0] == 's') {
-		tOp->file = 6;
-	} else if (s[0] == 't') {
-		tOp->file = 7;
-	} else if (s[0] == 'g') {
-		tOp->file = 0x1F;
-	} else if (s[0] == 'u') {
-		tOp->file = 0x1E;
-	} else if (s[0] == 'm')
-		tOp->file = 0x10;
-	s.erase(s.begin());
-	tOp->num_indices = 1;
-	num = atoi(s.substr(0, s.find('.')).c_str());
-	v.push_back(num);
-	if (s.find('.') < s.size()) {
-		handleSwizzle(s.substr(s.find('.') + 1), tOp, special);
-	} else {
-		handleSwizzle("", tOp, special);
 	}
+	
 	v.insert(v.begin(), op);
 	return v;
 }
@@ -890,22 +921,29 @@ DWORD parseAoffimmi(DWORD start, string o) {
 	return aoffimmi;
 }
 
-unordered_map<string, vector<DWORD>> hackMap = {
+map<string, vector<DWORD>> shaderLUT = {};
+
+map<string, vector<DWORD>> hackMap = {
 	{ "dcl_output oMask", { 0x02000065, 0x0000F000 } },
 };
 
-unordered_map<string, vector<int>> ldMap = {
+map<string, vector<int>> ldMap = {
+	{ "gather4_c_aoffimmi", { 5, 126, 1 } },
 	{ "gather4_c_aoffimmi_indexable", { 5, 126, 3 } },
 	{ "gather4_c_indexable", { 5, 126, 2 } },
+	{ "gather4_aoffimmi", { 4, 109, 1 } },
 	{ "gather4_aoffimmi_indexable", { 4, 109, 3 } },
 	{ "gather4_indexable", { 4, 109, 2 } },
+	{ "gather4_po_c", { 6, 128, 0 } },
 	{ "gather4_po_c_indexable", { 6, 128, 2 } },
+	{ "gather4_po", { 5, 127, 0 } },
 	{ "gather4_po_indexable", { 5, 127, 2 } },
 	{ "ld_aoffimmi", { 3, 45, 1 } },
 	{ "ld_aoffimmi_indexable", { 3, 45, 3 }},
 	{ "ld_indexable", { 3, 45, 2 } },
 	{ "ld_raw_indexable", { 3, 165, 2 } },
 	{ "ldms_indexable", { 4, 46, 2 } },
+	{ "ldms_aoffimmi", { 4, 46, 1 } },
 	{ "ldms_aoffimmi_indexable", { 4, 46, 3 } },
 	{ "sample_aoffimmi", { 4, 69, 1 } },
 	{ "sample_d_indexable", { 6, 73, 2 } },
@@ -926,12 +964,14 @@ unordered_map<string, vector<int>> ldMap = {
 	{ "bufinfo_indexable", { 2, 121, 2 } },
 };
 
-unordered_map<string, vector<int>> insMap = {
+map<string, vector<int>> insMap = {
+	{ "gather4_c", { 5, 126 } },
 	{ "sample_b", { 5, 74 } },
 	{ "sample_c", { 5, 70 } },
 	{ "sample_d", { 6, 73 } },
 	{ "sample_c_lz", { 5, 71 } },
 	{ "sample_l", { 5, 72 } },
+	{ "ld_uav_typed", { 3, 163 } },
 	{ "eval_sample_index", { 3, 204 } },
 	{ "bfi", { 5, 140 } },
 	{ "swapc", { 5, 142, 2 } },
@@ -944,7 +984,7 @@ unordered_map<string, vector<int>> insMap = {
 	{ "sampled", { 6, 73 } },
 	{ "gather4", { 4, 109 } },
 	{ "udiv", { 4, 78, 2 } },
-	{ "umul", { 4, 81, 2 } },
+	{ "umul", { 4, 81 } },
 	{ "umax", { 3, 83 } },
 	{ "ubfe", { 4, 138 } },
 	{ "store_structured", { 4, 168 } },
@@ -1018,27 +1058,17 @@ unordered_map<string, vector<int>> insMap = {
 	{ "if_z", { 1, 31, 0 } },
 	{ "if_nz", { 1, 31, 0 } },
 	{ "switch", { 1, 76, 0 } },
-	{ "break", { 0, 2 } },
-	{ "default", { 0, 10 } },
-	{ "else", { 0, 18 } },
-	{ "endif", { 0, 21 } },
-	{ "endloop", { 0, 22 } },
-	{ "endswitch", { 0, 23 } },
-	{ "loop", { 0, 48 } },
-	{ "ret", { 0, 62 } },
-	{ "nop",{ 0, 58 } },
-	{ "retc_nz", { 1, 63, 0 } },
-	{ "retc_z", { 1, 63, 0 } },
-	{ "emit", { 0, 19 } },
-	{ "continue", { 0, 7 } },
 	{ "continuec_z", { 1, 8, 0 } },
 	{ "continuec_nz", { 1, 8, 0 } },
-	{ "cut", { 0, 9 } },
+	{ "retc_nz", { 1, 63, 0 } },
+	{ "retc_z", { 1, 63 } },
+	{ "imm_atomic_or", { 4, 182 } },
 	{ "imm_atomic_and", { 4, 181 } },
 	{ "imm_atomic_exch", { 4, 184 } },
 	{ "imm_atomic_cmp_exch", { 5, 185 } },
 	{ "imm_atomic_iadd", { 4, 180 } },
 	{ "imm_atomic_consume", { 2, 179 } },
+	{ "imm_atomic_umax", { 4, 188 } },
 	{ "atomic_iadd", { 3, 173, 0 } },
 	{ "ld_raw", { 3, 165 } },
 	{ "store_raw", { 3, 166 } },
@@ -1047,23 +1077,98 @@ unordered_map<string, vector<int>> insMap = {
 	{ "atomic_umax", { 3, 176, 0 } },
 	{ "atomic_umin", { 3, 177, 0 } },
 	{ "atomic_or", { 3, 170, 0 } },
-	{ "dcl_tgsm_raw", { 2, 159, 0 } },
-	{ "dcl_tgsm_structured", { 3, 160, 0 } },
+	{ "atomic_and", { 3, 169, 0 } },
+	{ "atomic_cmp_store", { 4, 172 } },
+	{ "dcl_tgsm_raw", { 2, 159 } },
+	{ "dcl_tgsm_structured", { 3, 160 } },
 	{ "dcl_thread_group", { 3, 155 } },
-	{ "dcl_uav_raw", { 1, 157, 0 } },
-	{ "dcl_uav_structured", { 2, 158, 0 } },
 	{ "firstbit_lo", { 2, 136 } },
 	{ "firstbit_hi", { 2, 135 } },
 	{ "ibfe", { 4, 139 } },
 	{ "lod", { 4, 108 } },
 	{ "samplepos", { 3, 110 } },
+	{ "bufinfo", { 2, 121 } },
+	{ "store_uav_typed", { 3, 164 } },
+	{ "dcl_output", { 1, 101 } },
+	{ "dcl_input", { 1, 95 } },
 };
 
+map<string, int> shaderMap = {
+	{ "ps_", 0x00000 },
+	{ "vs_", 0x10000 },
+	{ "gs_", 0x20000 },
+	{ "hs_", 0x30000 },
+	{ "ds_", 0x40000 },
+	{ "cs_", 0x50000 },
+};
+
+map<string, vector<int>> miniInsMap = {
+	{ "sync_uglobal_g_t", { 190, 11 } },
+	{ "sync_uglobal_t", { 190, 9 } },
+	{ "sync_uglobal", { 190, 8 } },
+	{ "sync_g_t", { 190, 3 } },
+	{ "sync_g", { 190, 2 } },
+	{ "sync_t", { 190, 1 } },
+	{ "hs_decls", { 113 } },
+	{ "hs_control_point_phase", { 114 } },
+	{ "hs_fork_phase", { 115 } },
+	{ "hs_join_phase", { 116 } },
+	{ "break", { 2 } },
+	{ "default", { 10 } },
+	{ "else", { 18 } },
+	{ "endif", { 21 } },
+	{ "endloop", { 22 } },
+	{ "endswitch", { 23 } },
+	{ "loop", { 48 } },
+	{ "ret", { 62 } },
+	{ "nop",{ 58 } },
+	{ "cut", { 9 } },
+	{ "emit", { 19 } },
+	{ "continue", { 7 } },
+};
+
+DWORD toLD(string s) {
+	if (s == "(float,float,float,float)")
+		return 0x5555;
+	if (s == "(uint,uint,uint,uint)")
+		return 0x4444;
+	if (s == "(sint,sint,sint,sint)")
+		return 0x3333;
+	if (s == "(snorm,snorm,snorm,snorm)")
+		return 0x2222;
+	if (s == "(unorm,unorm,unorm,unorm)")
+		return 0x1111;
+	return 0;
+}
+
+DWORD ldFlag(string s) {
+	if (s == "refactoringAllowed")
+		return 0x1;
+	if (s == "enableDoublePrecisionFloatOps")
+		return 0x2;
+	if (s == "forceEarlyDepthStencil")
+		return 0x4;
+	if (s == "enableRawAndStructuredBuffers")
+		return 0x8;
+	if (s == "skipOptimization")
+		return 0x10;
+	if (s == "enableMinimumPrecision")
+		return 0x20;
+	if (s == "enable11_1DoubleExtensions")
+		return 0x40;
+	if (s == "enable11_1ShaderExtensions")
+		return 0x80;
+	if (s == "allResourcesBound")
+		return 0x100;
+		return 0;
+}
+
 vector<DWORD> assembleIns(string s) {
-	if (hackMap.find(s) != hackMap.end()) {
-		auto v = hackMap[s];
-		return v;
-	}
+	//if (shaderLUT.find(s) != shaderLUT.end())
+	//	return shaderLUT[s];
+
+	if (hackMap.find(s) != hackMap.end())
+		return hackMap[s];
 	DWORD op = 0;
 	shader_ins* ins = (shader_ins*)&op;
 	size_t pos = s.find("[precise");
@@ -1110,88 +1215,105 @@ vector<DWORD> assembleIns(string s) {
 	bool bSat = o.find("_sat") < o.size();
 	if (bSat) o = o.substr(0, o.find("_sat"));
 
-	if (o == "hs_decls") {
-		ins->opcode = 113;
+	
+	if (miniInsMap.find(o) != miniInsMap.end()) {
+		vector<int> vIns = miniInsMap[o];
+		ins->opcode = vIns[0];
+		ins->_11_23 = vIns.size() > 1 ? vIns[1] : 0;
 		ins->length = 1;
 		v.push_back(op);
-	} else if (o == "hs_fork_phase") {
-		ins->opcode = 115;
-		ins->length = 1;
-		v.push_back(op);
-	} else if (o == "hs_join_phase") {
-		ins->opcode = 116;
-		ins->length = 1;
-		v.push_back(op);
-	} else if (o == "hs_control_point_phase") {
-		ins->opcode = 114;
-		ins->length = 1;
-		v.push_back(op);
-	} else if (o.substr(0, 3) == "ps_") {
-		op = 0x00000;
+	} else if (shaderMap.find(o.substr(0, 3)) != shaderMap.end()) {
+		int type = shaderMap[o.substr(0, 3)];
+		op = type;
 		op |= 16 * atoi(o.substr(3, 1).c_str());
 		op |= atoi(o.substr(5, 1).c_str());
 		v.push_back(op);
-	} else if (o.substr(0, 3) == "vs_") {
-		op = 0x10000;
-		op |= 16 * atoi(o.substr(3, 1).c_str());
-		op |= atoi(o.substr(5, 1).c_str());
-		v.push_back(op);
-	} else if (o.substr(0, 3) == "gs_") {
-		op = 0x20000;
-		op |= 16 * atoi(o.substr(3, 1).c_str());
-		op |= atoi(o.substr(5, 1).c_str());
-		v.push_back(op);
-	} else if (o.substr(0, 3) == "hs_") {
-		op = 0x30000;
-		op |= 16 * atoi(o.substr(3, 1).c_str());
-		op |= atoi(o.substr(5, 1).c_str());
-		v.push_back(op);
-	} else if (o.substr(0, 3) == "ds_") {
-		op = 0x40000;
-		op |= 16 * atoi(o.substr(3, 1).c_str());
-		op |= atoi(o.substr(5, 1).c_str());
-		v.push_back(op);
-	} else if (o.substr(0, 3) == "cs_") {
-		op = 0x50000;
-		op |= 16 * atoi(o.substr(3, 1).c_str());
-		op |= atoi(o.substr(5, 1).c_str());
-		v.push_back(op);
-	} else if (w[0] == "sync_g_t") {
-		ins->opcode = 190;
-		ins->_11_23 = 3;
-		ins->length = 1;
-		v.push_back(op);
-	} else if (w[0] == "sync_uglobal") {
-		ins->opcode = 190;
-		ins->_11_23 = 8;
-		ins->length = 1;
-		v.push_back(op);
-	} else if (w[0] == "store_uav_typed") {
-		ins->opcode = 134;
-		if (w[1][0] == 'u') {
-			ins->opcode = 164;
-		}
-		int numOps = 3;
-		vector<vector<DWORD>> Os;
-		int numSpecial = 1;
-		for (int i = 0; i < numOps; i++)
-			Os.push_back(assembleOp(w[i + 1], i < numSpecial));
-		ins->length = 1;
-		for (int i = 0; i < numOps; i++)
-			ins->length += Os[i].size();
-		v.push_back(op);
-		for (int i = 0; i < numOps; i++)
-			v.insert(v.end(), Os[i].begin(), Os[i].end());
 	} else if (insMap.find(o) != insMap.end()) {
 		vector<int> vIns = insMap[o];
 		int numOps = vIns[0];
+		ins->opcode = vIns[1];
 		vector<vector<DWORD>> Os;
 		int numSpecial = 1;
-		if (vIns.size() > 2)
+		if (vIns.size() == 3) {
 			numSpecial = vIns[2];
-		for (int i = 0; i < numOps; i++)
-			Os.push_back(assembleOp(w[i + 1], i < numSpecial));
-		ins->opcode = vIns[1];
+		}
+		int offset = 0;
+		for (int i = 0; i < numOps; i++) {
+			int offsetSpace = i + 1 + offset;
+			string sOp = w[offsetSpace];
+
+			if (offsetSpace + 1 < w.size()) {
+				if (w[offsetSpace + 1] == "{min16f}") {
+					offset += 1;
+					sOp += " {min16f}";
+				}
+				if (w[offsetSpace + 1] == "{min16f}|") {
+					offset += 1;
+					sOp += " {min16f}|";
+				}
+				if (w[offsetSpace + 1] == "{min16u}") {
+					offset += 1;
+					sOp += " {min16u}";
+				}
+			}
+			if (offsetSpace + 3 < w.size()) {
+				if (w[offsetSpace + 1] == "{" &&
+					w[offsetSpace + 2] == "nonuniform" &&
+					w[offsetSpace + 3] == "}") {
+					offset += 3;
+					sOp += " { nonuniform }";
+				}
+				if (w[offsetSpace + 1] == "{def32" &&
+					w[offsetSpace + 2] == "as" &&
+					w[offsetSpace + 3] == "min16f}") {
+					offset += 3;
+					sOp += " {def32 as min16f}";
+				}
+				if (w[offsetSpace + 1] == "{def32" &&
+					w[offsetSpace + 2] == "as" &&
+					w[offsetSpace + 3] == "min16f}|") {
+					offset += 3;
+					sOp += " {def32 as min16f}|";
+				}
+				if (w[offsetSpace + 1] == "{def32" &&
+					w[offsetSpace + 2] == "as" &&
+					w[offsetSpace + 3] == "min16u}") {
+					offset += 3;
+					sOp += " {def32 as min16u}";
+				}
+				if (w[offsetSpace + 1] == "{def32" &&
+					w[offsetSpace + 2] == "as" &&
+					w[offsetSpace + 3] == "min16u}|") {
+					offset += 3;
+					sOp += " {def32 as min16u}|";
+				}
+				if (w[offsetSpace + 1] == "{min16f" &&
+					w[offsetSpace + 2] == "as" &&
+					w[offsetSpace + 3] == "def32}") {
+					offset += 3;
+					sOp += " {min16f as def32}";
+				}
+				if (w[offsetSpace + 1] == "{min16f" &&
+					w[offsetSpace + 2] == "as" &&
+					w[offsetSpace + 3] == "def32}|") {
+					offset += 3;
+					sOp += " {min16f as def32}|";
+				}
+				if (w[offsetSpace + 1] == "{min16u" &&
+					w[offsetSpace + 2] == "as" &&
+					w[offsetSpace + 3] == "def32}") {
+					offset += 3;
+					sOp += " {min16u as def32}";
+				}
+				if (w[offsetSpace + 1] == "{min16u" &&
+					w[offsetSpace + 2] == "as" &&
+					w[offsetSpace + 3] == "def32}|") {
+					offset += 3;
+					sOp += " {min16u as def32}|";
+				}
+			}
+			Os.push_back(assembleOp(sOp, i < numSpecial));
+		}
 		if (bSat)
 			ins->_11_23 |= 4;
 		if (bNZ)
@@ -1199,22 +1321,49 @@ vector<DWORD> assembleIns(string s) {
 		if (bZ)
 			ins->_11_23 |= 0;
 		ins->length = 1;
-		for (int i = 0; i < numOps; i++)
+		for (size_t i = 0; i < Os.size(); i++)
 			ins->length += Os[i].size();
 		v.push_back(op);
-		for (int i = 0; i < numOps; i++)
+		for (size_t i = 0; i < Os.size(); i++)
 			v.insert(v.end(), Os[i].begin(), Os[i].end());
-	} else if (ldMap.find(o) != ldMap.end()) {
+	}
+	else if (ldMap.find(o) != ldMap.end()) {
 		vector<int> vIns = ldMap[o];
 		int numOps = vIns[0];
 		vector<vector<DWORD>> Os;
+		if (vIns[2] == 0) {
+			int i = 5 + 5;
+		}
 		int startPos = 1 + (vIns[2] & 3);
-		//startPos = w.size() - numOps;
-		for (int i = 0; i < numOps; i++)
-			Os.push_back(assembleOp(w[i + startPos], i == 0));
+		int numSpecial = 1;
+		int offset = 0;
+		for (int i = 0; i < numOps; i++) {
+			int offsetSpace = i + startPos + offset;
+			string sOp = w[offsetSpace];
+			if (offsetSpace + 1 < w.size()) {
+				if (w[offsetSpace + 1] == "{min16f}") {
+					offset += 1;
+					sOp += " {min16f}";
+				}
+				if (w[offsetSpace + 1] == "{min16u}") {
+					offset += 1;
+					sOp += " {min16u}";
+				}
+			}
+			if (offsetSpace + 3 < w.size()) {
+				if (w[offsetSpace + 1] == "{def32" &&
+					w[offsetSpace + 2] == "as" &&
+					w[offsetSpace + 3] == "min16u}") {
+					offset += 3;
+					sOp += " {def32 as min16u}";
+				}
+			}
+			Os.push_back(assembleOp(sOp, i < numSpecial));
+		}
 		ins->opcode = vIns[1];
 		ins->length = 1 + (vIns[2] & 3);
-		ins->extended = 1;
+		if (vIns[2] != 0)
+			ins->extended = 1;
 		for (int i = 0; i < numOps; i++)
 			ins->length += Os[i].size();
 		v.push_back(op);
@@ -1263,181 +1412,242 @@ vector<DWORD> assembleIns(string s) {
 				v.push_back(0x000CCCC3);
 			if (w[startPos - 1] == "(mixed,mixed,mixed,mixed)")
 				v.push_back(0x00199983);
+			if (w[startPos - 1] == "(snorm,snorm,snorm,snorm)")
+				v.push_back(0x00088883);
 			if (w[startPos - 1] == "(unorm,unorm,unorm,unorm)")
 				v.push_back(0x00044443);
 		}
 		for (int i = 0; i < numOps; i++)
 			v.insert(v.end(), Os[i].begin(), Os[i].end());
-	} else if (o == "dcl_input") {
-		vector<DWORD> os = assembleOp(w[1], 1);
-		ins->opcode = 95;
-		ins->length = 1 + os.size();
-		// Should sort special value for text constants.
-		if ((os[0] & 0xFF0) == 0)
-			os[0] -= 1;
-		v.push_back(op);
+	} else if (o == "dcl_uav_raw") {
+		vector<DWORD> os = assembleOp(w[1], true);
+		ins->opcode = 157;
 		v.insert(v.end(), os.begin(), os.end());
-	} else if (o == "dcl_output") {
-		vector<DWORD> os = assembleOp(w[1], 1);
-		ins->opcode = 101;
-		ins->length = 1 + os.size();
-		v.push_back(op);
+		if (w.size() > 2) {
+			if (w[2].find("space=") == 0)
+				v.push_back(atoi(w[2].substr(6).c_str()));
+		}
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
+	} else if (o == "dcl_uav_raw_glc") {
+		vector<DWORD> os = assembleOp(w[1], true);
+		ins->opcode = 157;
 		v.insert(v.end(), os.begin(), os.end());
+		ins->length = 1 + v.size();
+		ins->_11_23 = 32;
+		v.insert(v.begin(), op);
+	} else if (o == "dcl_uav_structured") {
+		vector<DWORD> os = assembleOp(w[1], true);
+		ins->opcode = 158;
+		v.insert(v.end(), os.begin(), os.end());
+		v.push_back(atoi(w[2].c_str()));
+		if (w.size() > 3) {
+			if (w[3].find("space=") == 0)
+				v.push_back(atoi(w[3].substr(6).c_str()));
+		}
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
+	} else if (o == "dcl_uav_structured_rov") {
+		vector<DWORD> os = assembleOp(w[1], true);
+		ins->opcode = 158;
+		ins->_11_23 = 64;
+		v.insert(v.end(), os.begin(), os.end());
+		v.push_back(atoi(w[2].c_str()));
+		if (w.size() > 3) {
+			if (w[3].find("space=") == 0)
+				v.push_back(atoi(w[3].substr(6).c_str()));
+		}
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_resource_raw") {
-		vector<DWORD> os = assembleOp(w[1]);
+		vector<DWORD> os = assembleOp(w[1], true);
 		ins->opcode = 161;
-		ins->length = 3;
-		v.push_back(op);
 		v.insert(v.end(), os.begin(), os.end());
+		if (w.size() > 2) {
+			if (w[2].find("space=") == 0)
+				v.push_back(atoi(w[2].substr(6).c_str()));
+		}
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_resource_buffer") {
-		vector<DWORD> os = assembleOp(w[2]);
+		vector<DWORD> os = assembleOp(w[2], true);
 		ins->opcode = 88;
 		ins->_11_23 = 1;
-		ins->length = 4;
-		v.push_back(op);
 		v.insert(v.end(), os.begin(), os.end());
-		if (w[1] == "(float,float,float,float)")
-			v.push_back(0x5555);
-		if (w[1] == "(uint,uint,uint,uint)")
-			v.push_back(0x4444);
-		if (w[1] == "(sint,sint,sint,sint)")
-			v.push_back(0x3333);
+		v.push_back(toLD(w[1]));
+		if (w.size() > 3) {
+			if (w[3].find("space=") == 0)
+				v.push_back(atoi(w[3].substr(6).c_str()));
+		}
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_resource_texture1d") {
 		vector<DWORD> os = assembleOp(w[2]);
 		ins->opcode = 88;
 		ins->_11_23 = 2;
-		ins->length = 4;
-		v.push_back(op);
 		v.insert(v.end(), os.begin(), os.end());
-		if (w[1] == "(float,float,float,float)")
-			v.push_back(0x5555);
-		if (w[1] == "(uint,uint,uint,uint)")
-			v.push_back(0x4444);
+		v.push_back(toLD(w[1]));
+		if (w.size() > 3) {
+			if (w[3].find("space=") == 0)
+				v.push_back(atoi(w[3].substr(6).c_str()));
+		}
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_resource_texture1darray") {
 		vector<DWORD> os = assembleOp(w[2]);
 		ins->opcode = 88;
 		ins->_11_23 = 7;
-		ins->length = 4;
-		v.push_back(op);
 		v.insert(v.end(), os.begin(), os.end());
-		if (w[1] == "(float,float,float,float)")
-			v.push_back(0x5555);
-		if (w[1] == "(uint,uint,uint,uint)")
-			v.push_back(0x4444);
+		v.push_back(toLD(w[1]));
+		if (w.size() > 3) {
+			if (w[3].find("space=") == 0)
+				v.push_back(atoi(w[3].substr(6).c_str()));
+		}
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_uav_typed_texture1d") {
 		vector<DWORD> os = assembleOp(w[2]);
 		ins->opcode = 156;
 		ins->_11_23 = 2;
-		ins->length = 4;
-		v.push_back(op);
 		v.insert(v.end(), os.begin(), os.end());
-		if (w[1] == "(float,float,float,float)")
-			v.push_back(0x5555);
-		if (w[1] == "(uint,uint,uint,uint)")
-			v.push_back(0x4444);
+		v.push_back(toLD(w[1]));
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_resource_texture2d") {
-		vector<DWORD> os = assembleOp(w[2]);
+		vector<DWORD> os = assembleOp(w[2], true);
 		ins->opcode = 88;
 		ins->_11_23 = 3;
-		ins->length = 4;
-		v.push_back(op);
 		v.insert(v.end(), os.begin(), os.end());
-		if (w[1] == "(float,float,float,float)")
-			v.push_back(0x5555);
-		if (w[1] == "(uint,uint,uint,uint)")
-			v.push_back(0x4444);
-		if (w[1] == "(sint,sint,sint,sint)")
-			v.push_back(0x3333);
+		v.push_back(toLD(w[1]));
+		if (w.size() > 3) {
+			if (w[3].find("space=") == 0)
+				v.push_back(atoi(w[3].substr(6).c_str()));
+		}
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_uav_typed_buffer") {
-		vector<DWORD> os = assembleOp(w[2]);
+		vector<DWORD> os = assembleOp(w[2], true);
 		ins->opcode = 156;
 		ins->_11_23 = 1;
-		ins->length = 4;
-		v.push_back(op);
 		v.insert(v.end(), os.begin(), os.end());
-		if (w[1] == "(float,float,float,float)")
-			v.push_back(0x5555);
-		if (w[1] == "(uint,uint,uint,uint)")
-			v.push_back(0x4444);
+		v.push_back(toLD(w[1]));
+		if (w.size() > 3) {
+			if (w[3].find("space=") == 0)
+				v.push_back(atoi(w[3].substr(6).c_str()));
+		}
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_resource_texture3d") {
-		vector<DWORD> os = assembleOp(w[2]);
+		vector<DWORD> os = assembleOp(w[2], true);
 		ins->opcode = 88;
 		ins->_11_23 = 5;
-		ins->length = 4;
-		v.push_back(op);
 		v.insert(v.end(), os.begin(), os.end());
-		if (w[1] == "(float,float,float,float)")
-			v.push_back(0x5555);
-		if (w[1] == "(uint,uint,uint,uint)")
-			v.push_back(0x4444);
+		v.push_back(toLD(w[1]));
+		if (w.size() > 3) {
+			if (w[3].find("space=") == 0)
+				v.push_back(atoi(w[3].substr(6).c_str()));
+		}
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_uav_typed_texture3d") {
-		vector<DWORD> os = assembleOp(w[2]);
+		vector<DWORD> os = assembleOp(w[2], true);
 		ins->opcode = 156;
 		ins->_11_23 = 5;
-		ins->length = 4;
-		v.push_back(op);
 		v.insert(v.end(), os.begin(), os.end());
-		if (w[1] == "(float,float,float,float)")
-			v.push_back(0x5555);
-		if (w[1] == "(uint,uint,uint,uint)")
-			v.push_back(0x4444);
+		v.push_back(toLD(w[1]));
+		if (w.size() > 3) {
+			if (w[3].find("space=") == 0)
+				v.push_back(atoi(w[3].substr(6).c_str()));
+		}
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_resource_texturecube") {
-		vector<DWORD> os = assembleOp(w[2]);
+		vector<DWORD> os = assembleOp(w[2], true);
 		ins->opcode = 88;
 		ins->_11_23 = 6;
-		ins->length = 4;
-		v.push_back(op);
 		v.insert(v.end(), os.begin(), os.end());
-		if (w[1] == "(float,float,float,float)")
-			v.push_back(0x5555);
-		if (w[1] == "(uint,uint,uint,uint)")
-			v.push_back(0x4444);
+		v.push_back(toLD(w[1]));
+		if (w.size() > 3) {
+			if (w[3].find("space=") == 0)
+				v.push_back(atoi(w[3].substr(6).c_str()));
+		}
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_resource_texturecubearray") {
-		vector<DWORD> os = assembleOp(w[2]);
+		vector<DWORD> os = assembleOp(w[2], true);
 		ins->opcode = 88;
 		ins->_11_23 = 10;
-		ins->length = 4;
-		v.push_back(op);
 		v.insert(v.end(), os.begin(), os.end());
-		if (w[1] == "(float,float,float,float)")
-			v.push_back(0x5555);
-		if (w[1] == "(uint,uint,uint,uint)")
-			v.push_back(0x4444);
+		v.push_back(toLD(w[1]));
+		if (w.size() > 3) {
+			if (w[3].find("space=") == 0)
+				v.push_back(atoi(w[3].substr(6).c_str()));
+		}
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_resource_texture2darray") {
-		vector<DWORD> os = assembleOp(w[2]);
+		vector<DWORD> os = assembleOp(w[2], true);
 		ins->opcode = 88;
 		ins->_11_23 = 8;
-		ins->length = 4;
-		v.push_back(op);
 		v.insert(v.end(), os.begin(), os.end());
-		if (w[1] == "(float,float,float,float)")
-			v.push_back(0x5555);
-		if (w[1] == "(uint,uint,uint,uint)")
-			v.push_back(0x4444);
+		v.push_back(toLD(w[1]));
+		if (w.size() > 3) {
+			if (w[3].find("space=") == 0)
+				v.push_back(atoi(w[3].substr(6).c_str()));
+		}
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_uav_typed_texture2d") {
-		vector<DWORD> os = assembleOp(w[2]);
+		vector<DWORD> os = assembleOp(w[2], true);
 		ins->opcode = 156;
 		ins->_11_23 = 3;
-		ins->length = 4;
-		v.push_back(op);
 		v.insert(v.end(), os.begin(), os.end());
-		if (w[1] == "(float,float,float,float)")
-			v.push_back(0x5555);
-		if (w[1] == "(uint,uint,uint,uint)")
-			v.push_back(0x4444);
+		v.push_back(toLD(w[1]));
+		if (w.size() > 3) {
+			if (w[3].find("space=") == 0)
+				v.push_back(atoi(w[3].substr(6).c_str()));
+		}
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
+	} else if (o == "dcl_uav_typed_texture2d_rov") {
+		vector<DWORD> os = assembleOp(w[2], true);
+		ins->opcode = 156;
+		ins->_11_23 = 67;
+		v.insert(v.end(), os.begin(), os.end());
+		v.push_back(toLD(w[1]));
+		if (w.size() > 3) {
+			if (w[3].find("space=") == 0)
+				v.push_back(atoi(w[3].substr(6).c_str()));
+		}
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
+	} else if (o == "dcl_uav_typed_texture1darray") {
+		vector<DWORD> os = assembleOp(w[2], true);
+		ins->opcode = 156;
+		ins->_11_23 = 7;
+		v.insert(v.end(), os.begin(), os.end());
+		v.push_back(toLD(w[1]));
+		if (w.size() > 3) {
+			if (w[3].find("space=") == 0)
+				v.push_back(atoi(w[3].substr(6).c_str()));
+		}
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_uav_typed_texture2darray") {
-		vector<DWORD> os = assembleOp(w[2]);
+		vector<DWORD> os = assembleOp(w[2], true);
 		ins->opcode = 156;
 		ins->_11_23 = 8;
 		ins->length = 4;
-		v.push_back(op);
 		v.insert(v.end(), os.begin(), os.end());
-		if (w[1] == "(float,float,float,float)")
-			v.push_back(0x5555);
-		if (w[1] == "(uint,uint,uint,uint)")
-			v.push_back(0x4444);
+		v.push_back(toLD(w[1]));
+		if (w.size() > 3) {
+			if (w[3].find("space=") == 0)
+				v.push_back(atoi(w[3].substr(6).c_str()));
+		}
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_resource_texture2dms") {
-		vector<DWORD> os = assembleOp(w[3]);
+		vector<DWORD> os = assembleOp(w[3], true);
 		ins->opcode = 88;
 		if (w[1] == "(0)")
 			ins->_11_23 = 4;
@@ -1453,49 +1663,54 @@ vector<DWORD> assembleIns(string s) {
 			ins->_11_23 = 516;
 		if (w[1] == "(32)")
 			ins->_11_23 = 1028;
-		ins->length = 4;
-		v.push_back(op);
 		v.insert(v.end(), os.begin(), os.end());
-		if (w[2] == "(float,float,float,float)")
-			v.push_back(0x5555);
-		if (w[2] == "(uint,uint,uint,uint)")
-			v.push_back(0x4444);
+		v.push_back(toLD(w[2]));
+		if (w.size() > 4) {
+			if (w[4].find("space=") == 0)
+				v.push_back(atoi(w[4].substr(6).c_str()));
+		}
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_resource_texture2dmsarray") {
-		vector<DWORD> os = assembleOp(w[3]);
+		vector<DWORD> os = assembleOp(w[3], true);
 		ins->opcode = 88;
+		if (w[1] == "(0)")
+			ins->_11_23 = 9;
 		if (w[1] == "(2)")
 			ins->_11_23 = 73;
 		if (w[1] == "(4)")
 			ins->_11_23 = 137;
 		if (w[1] == "(8)")
 			ins->_11_23 = 265;
-		ins->length = 4;
-		v.push_back(op);
 		v.insert(v.end(), os.begin(), os.end());
-		if (w[2] == "(unorm,unorm,unorm,unorm)")
-			v.push_back(0x1111);
+		v.push_back(toLD(w[2]));
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_indexrange") {
 		vector<DWORD> os = assembleOp(w[1], true);
 		ins->opcode = 91;
-		ins->length = 2 + os.size();
-		v.push_back(op);
 		v.insert(v.end(), os.begin(), os.end());
 		v.push_back(atoi(w[2].c_str()));
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_temps") {
 		ins->opcode = 104;
-		ins->length = 2;
-		v.push_back(op);
 		v.push_back(atoi(w[1].c_str()));
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_resource_structured") {
-		vector<DWORD> os = assembleOp(w[1]);
+		vector<DWORD> os = assembleOp(w[1], true);
 		ins->opcode = 162;
-		ins->length = 4;
-		v.push_back(op);
 		v.insert(v.end(), os.begin(), os.end());
 		v.push_back(atoi(w[2].c_str()));
+		if (w.size() > 3) {
+			if (w[3].find("space=") == 0)
+				v.push_back(atoi(w[3].substr(6).c_str()));
+		}
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_sampler") {
-		vector<DWORD> os = assembleOp(w[1]);
-		os[0] = 0x106000;
+		vector<DWORD> os = assembleOp(w[1], true);
 		ins->opcode = 90;
 		if (w.size() > 2) {
 			if (w[2] == "mode_default") {
@@ -1504,43 +1719,30 @@ vector<DWORD> assembleIns(string s) {
 				ins->_11_23 = 1;
 			}
 		}
-		ins->length = 1 + os.size();
-		v.push_back(op);
+		if (w.size() > 3) {
+			if (w[3].find("space=") == 0)
+				os.push_back(atoi(w[3].substr(6).c_str()));
+		}
 		v.insert(v.end(), os.begin(), os.end());
+		ins->length = 1 + v.size();
+		v.insert(v.begin(), op);
 	} else if (o == "dcl_globalFlags") {
 		ins->opcode = 106;
 		ins->length = 1;
 		ins->_11_23 = 0;
-		if (w.size() > 1) {
-			string s = w[1];
-			if (s == "refactoringAllowed")
-				ins->_11_23 |= 1;
-			if (s == "forceEarlyDepthStencil")
-				ins->_11_23 |= 4;
-			if (s == "enableRawAndStructuredBuffers")
-				ins->_11_23 |= 8;
-		}
-		if (w.size() > 3) {
-			string s = w[3];
-			if (s == "refactoringAllowed")
-				ins->_11_23 |= 1;
-			if (s == "forceEarlyDepthStencil")
-				ins->_11_23 |= 4;
-			if (s == "enableRawAndStructuredBuffers")
-				ins->_11_23 |= 8;
-		}
-		if (w.size() > 5) {
-			string s = w[5];
-			if (s == "refactoringAllowed")
-				ins->_11_23 |= 1;
-			if (s == "forceEarlyDepthStencil")
-				ins->_11_23 |= 4;
-			if (s == "enableRawAndStructuredBuffers")
-				ins->_11_23 |= 8;
-		}
+		if (w.size() > 1)
+			ins->_11_23 |= ldFlag(w[1]);
+		if (w.size() > 3)
+			ins->_11_23 |= ldFlag(w[3]);
+		if (w.size() > 5)
+			ins->_11_23 |= ldFlag(w[5]);
+		if (w.size() > 7)
+			ins->_11_23 |= ldFlag(w[7]);
+		if (w.size() > 9)
+			ins->_11_23 |= ldFlag(w[9]);
 		v.push_back(op);
 	} else if (o == "dcl_constantbuffer") {
-		vector<DWORD> os = assembleOp(w[1]);
+		vector<DWORD> os = assembleOp(w[1], true);
 		ins->opcode = 89;
 		if (w.size() > 2) {
 			if (w[2] == "dynamicIndexed")
@@ -1548,6 +1750,11 @@ vector<DWORD> assembleIns(string s) {
 			else if (w[2] == "immediateIndexed")
 				ins->_11_23 = 0;
 		}
+		if (w.size() > 3) {
+			if (w[3].find("space=") == 0)
+				os.push_back(atoi(w[3].substr(6).c_str()));
+		}
+
 		ins->length = 1 + os.size();
 		v.push_back(op);
 		v.insert(v.end(), os.begin(), os.end());
@@ -1622,8 +1829,13 @@ vector<DWORD> assembleIns(string s) {
 		ins->opcode = 98;
 		if (w[1] == "linear") {
 			if (w[2] == "noperspective") {
-				ins->_11_23 = 4;
-				os = assembleOp(w[3], true);
+				if (w[3] == "sample") {
+					ins->_11_23 = 7;
+					os = assembleOp(w[4], true);
+				} else {
+					ins->_11_23 = 4;
+					os = assembleOp(w[3], true);
+				}
 			} else if (w[2] == "centroid") {
 				ins->_11_23 = 3;
 				os = assembleOp(w[3], true);
@@ -1632,7 +1844,11 @@ vector<DWORD> assembleIns(string s) {
 				os = assembleOp(w[3], true);
 			} else {
 				ins->_11_23 = 2;
-				os = assembleOp(w[2], true);
+				if (w.size() > 3) {
+					os = assembleOp(w[2] + " " + w[3], true);
+				} else {
+					os = assembleOp(w[2], true);
+				}
 			}
 		}
 		if (w[1] == "constant") {
@@ -1643,6 +1859,9 @@ vector<DWORD> assembleIns(string s) {
 		v.push_back(op);
 		v.insert(v.end(), os.begin(), os.end());
 	} else if (o == "dcl_input_ps_sgv") {
+		if (w[1] == "constant") {
+			w.erase(w.begin() + 1);
+		}
 		vector<DWORD> os = assembleOp(w[1], true);
 		ins->opcode = 99;
 		ins->_11_23 = 1;
@@ -1663,7 +1882,12 @@ vector<DWORD> assembleIns(string s) {
 		ins->opcode = 100;
 		if (w[1] == "linear") {
 			if (w[2] == "noperspective") {
-				if (w[3] == "centroid") {
+				if (w[3] == "sample") {
+					ins->_11_23 = 7;
+					os = assembleOp(w[4], true);
+					if (w[5] == "position")
+						os.push_back(1);
+				} else if (w[3] == "centroid") {
 					ins->_11_23 = 5;
 					os = assembleOp(w[4], true);
 					if (w[5] == "position")
@@ -1704,7 +1928,6 @@ vector<DWORD> assembleIns(string s) {
 		ins->opcode = 53;
 		ins->_11_23 = 3;
 		ins->length = 0;
-		w.size();
 		DWORD length = 2;
 		DWORD offset = 3;
 		while (offset < w.size()) {
@@ -1781,6 +2004,8 @@ vector<DWORD> assembleIns(string s) {
 			ins->_11_23 = 5;
 		else if (w[1] == "linestrip")
 			ins->_11_23 = 3;
+		else if (w[1] == "pointlist")
+			ins->_11_23 = 1;
 		v.push_back(op);
 	} else if (o == "dcl_output_control_point_count") {
 		vector<DWORD> os = assembleOp(w[1]);
@@ -1829,7 +2054,7 @@ vector<DWORD> assembleIns(string s) {
 	/*
 	if (o == "add") {
 		ins->opcode = 0;
-		auto o1 = assembleOp(w[1], 1);
+		auto o1 = assembleOp(w[1], true);
 		auto o2 = assembleOp(w[2]);
 		auto o3 = assembleOp(w[3]);
 		ins->length = 1;
@@ -1854,14 +2079,16 @@ vector<byte> readFile(string fileName) {
 		int fileSize = ftell(f);
 		buffer.resize(fileSize);
 		fseek(f, 0L, SEEK_SET);
-		int numRead = fread(buffer.data(), 1, buffer.size(), f);
+		size_t numRead = fread(buffer.data(), 1, buffer.size(), f);
 		fclose(f);
 	}
 	return buffer;
 }
 
-vector<string> stringToLines(const char* start, int size) {
+vector<string> stringToLines(const char* start, size_t size) {
 	vector<string> lines;
+	if (size == 0)
+		return lines;
 	const char* pStart = start;
 	const char* pEnd = pStart;
 	const char* pRealEnd = pStart + size;
@@ -1888,7 +2115,7 @@ vector<string> stringToLines(const char* start, int size) {
 	return lines;
 }
 
-vector<DWORD> ComputeHash(byte const* input, DWORD size) {
+vector<DWORD> ComputeHash(byte const* input, size_t size) {
 	DWORD esi;
 	DWORD ebx;
 	DWORD i = 0;
@@ -2028,7 +2255,7 @@ string shaderModel(byte* buffer) {
 	chunkOffsets.resize(numChunks);
 	std::memcpy(chunkOffsets.data(), pPosition, 4 * numChunks);
 
-	byte* codeByteStart;
+	byte* codeByteStart = 0;
 	int codeChunk = 0;
 	for (DWORD i = 1; i <= numChunks; i++) {
 		codeChunk = numChunks - i;
@@ -2068,7 +2295,89 @@ string shaderModel(byte* buffer) {
 	return shaderModel;
 }
 
+void createLUT(DWORD* codeStart, vector<byte> buffer) {
+	vector<byte> asmFile = disassembler(buffer);
+	vector<string> lines = stringToLines((char*)asmFile.data(), asmFile.size());
+	bool codeStarted = false;
+	bool multiLine = false;
+	string s2;
+	vector<DWORD> o;
+	for (DWORD i = 0; i < lines.size(); i++) {
+		string s = lines[i];
+		shader_ins* ins = (shader_ins*)codeStart;
+		vector<DWORD> o;
+		if (memcmp(s.c_str(), "//", 2) != 0 && memcmp(s.c_str(), "#line", 5) != 0) {
+			vector<DWORD> v;
+			if (!codeStarted) {
+				if (s.size() > 0 && s[0] != ' ') {
+					codeStarted = true;
+					o.push_back(*codeStart);
+					codeStart++;
+					shaderLUT[s] = o;
+					codeStart++; // Shader size
+				}
+			}
+			else if (s.find("{ {") < s.size()) {
+				s2 = s;
+				multiLine = true;
+			}
+			else if (s.find("} }") < s.size()) {
+				s2.append("\n");
+				s2.append(s);
+				s = s2;
+				multiLine = false;
+				o.push_back(*codeStart);
+				codeStart++;
+				auto lenght = *codeStart;
+				o.push_back(*codeStart);
+				codeStart++;
+				for (size_t i = 0; i < lenght; i++) {
+					o.push_back(*codeStart);
+					codeStart++;
+				}
+				shaderLUT[s] = o;
+			}
+			else if (multiLine) {
+				s2.append("\n");
+				s2.append(s);
+			}
+			else if (s.size() > 0) {
+				for (size_t i = 0; i < ins->length; i++) {
+					o.push_back(*codeStart);
+					codeStart++;
+				}
+				shaderLUT[s] = o;
+			}
+		}
+	}
+}
+
 vector<byte> assembler(vector<byte> asmFile, vector<byte> buffer) {
+	vector<byte> ret;
+	if (asmFile.size() == 0)
+		return ret;
+	if (asmFile[0] == ';') {
+		/*
+		ComPtr<IDxcUtils> pUtils;
+		DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(pUtils.GetAddressOf()));
+		ComPtr<IDxcAssembler> pAssembler;
+		DxcCreateInstance(CLSID_DxcAssembler, IID_PPV_ARGS(pAssembler.GetAddressOf()));
+		ComPtr<IDxcBlobEncoding> pSource;
+		pUtils->CreateBlob(asmFile.data(), asmFile.size(), CP_ACP, pSource.GetAddressOf());
+		ComPtr<IDxcOperationResult> pRes;
+		HRESULT hr = pAssembler->AssembleToContainer(pSource.Get(), pRes.GetAddressOf());
+		if (hr == S_OK) {
+			ComPtr<IDxcBlob> pBlob;
+			pRes->GetResult(pBlob.GetAddressOf());
+			byte* pASM = (byte*)pBlob->GetBufferPointer();
+			for (size_t i = 0; i < pBlob->GetBufferSize(); i++) {
+				ret.push_back(pASM[i]);
+			}
+		}
+		*/
+		return ret;
+	}
+
 	byte fourcc[4];
 	DWORD fHash[4];
 	DWORD one;
@@ -2090,20 +2399,19 @@ vector<byte> assembler(vector<byte> asmFile, vector<byte> buffer) {
 	chunkOffsets.resize(numChunks);
 	std::memcpy(chunkOffsets.data(), pPosition, 4 * numChunks);
 
-	char* asmBuffer;
-	int asmSize;
-	asmBuffer = (char*)asmFile.data();
-	asmSize = asmFile.size();
-	byte* codeByteStart;
+	byte* codeByteStart = 0;
 	int codeChunk = 0;
 	for (DWORD i = 1; i <= numChunks; i++) {
 		codeChunk = numChunks - i;
 		codeByteStart = buffer.data() + chunkOffsets[numChunks - i];
 		if (memcmp(codeByteStart, "SHEX", 4) == 0 || memcmp(codeByteStart, "SHDR", 4) == 0)
 			break;
-	}
-	vector<string> lines = stringToLines(asmBuffer, asmSize);
+	}	
 	DWORD* codeStart = (DWORD*)(codeByteStart + 8);
+
+	//createLUT(codeStart, buffer);
+
+	vector<string> lines = stringToLines((char*)asmFile.data(), asmFile.size());
 	bool codeStarted = false;
 	bool multiLine = false;
 	string s2;
@@ -2142,10 +2450,14 @@ vector<byte> assembler(vector<byte> asmFile, vector<byte> buffer) {
 	auto it = buffer.begin() + chunkOffsets[codeChunk] + 8;
 	DWORD codeSize = codeStart[1];
 	buffer.erase(it, it + codeSize);
-	DWORD newCodeSize = 4 * o.size();
+	DWORD newCodeSize = 4 * (DWORD)o.size();
 	codeStart[1] = newCodeSize;
 	vector<byte> newCode(newCodeSize);
 	o[1] = o.size();
+	for (int i = 0; i < o.size(); i++) {
+		if (o[i] == 0x12404001) o[i] == 0x00004001;
+		if (o[i] == 0x12404002) o[i] == 0x00004002;
+	}
 	memcpy(newCode.data(), o.data(), newCodeSize);
 	it = buffer.begin() + chunkOffsets[codeChunk] + 8;
 	buffer.insert(it, newCode.begin(), newCode.end());
@@ -2153,11 +2465,13 @@ vector<byte> assembler(vector<byte> asmFile, vector<byte> buffer) {
 	for (DWORD i = codeChunk + 1; i < numChunks; i++) {
 		dwordBuffer[8 + i] += newCodeSize - codeSize;
 	}
+
 	dwordBuffer[6] = buffer.size();
 	vector<DWORD> hash = ComputeHash((byte const*)buffer.data() + 20, buffer.size() - 20);
 	dwordBuffer[1] = hash[0];
 	dwordBuffer[2] = hash[1];
 	dwordBuffer[3] = hash[2];
 	dwordBuffer[4] = hash[3];
+
 	return buffer;
 }

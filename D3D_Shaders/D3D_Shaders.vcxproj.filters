@@ -18,15 +18,6 @@
     <ClInclude Include="stdafx.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="targetver.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="DecompileHLSL.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\log.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Shaders.cpp">
@@ -37,6 +28,14 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\BinaryDecompiler\BinaryDecompiler.vcxproj.filters" />
+    <Text Include="gamelist.txt">
+      <Filter>Resource Files</Filter>
+    </Text>
+    <Text Include="dxil.txt">
+      <Filter>Resource Files</Filter>
+    </Text>
+    <Text Include="test.txt">
+      <Filter>Resource Files</Filter>
+    </Text>
   </ItemGroup>
 </Project>

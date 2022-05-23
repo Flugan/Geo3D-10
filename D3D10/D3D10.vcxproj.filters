@@ -18,15 +18,21 @@
     <None Include="proxydll.def">
       <Filter>Source Files</Filter>
     </None>
+    <None Include="..\d3dx.ini">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="..\LICENSE">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="..\README.md">
+      <Filter>Resource Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="proxydll.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="stdafx.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\nvstereo.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\vkeys.h">

@@ -23,11 +23,13 @@
     <ClCompile Include="d3d10.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\d3dx.ini" />
+    <None Include="..\LICENSE" />
+    <None Include="..\README.md" />
     <None Include="proxydll.def" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\log.h" />
-    <ClInclude Include="..\nvstereo.h" />
     <ClInclude Include="..\vkeys.h" />
     <ClInclude Include="proxydll.h" />
     <ClInclude Include="stdafx.h" />
@@ -81,16 +83,16 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
-    <IntDir>$(Configuration)\</IntDir>
+    <OutDir>$(SolutionDir)x32\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)x32\$(Configuration)\</IntDir>
     <LibraryPath>$(SolutionDir);$(VC_LibraryPath_x86);$(WindowsSDK_LibraryPath_x86);</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LibraryPath>$(SolutionDir);$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
-    <IntDir>$(Configuration)\</IntDir>
+    <OutDir>$(SolutionDir)x32\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)x32\$(Configuration)\</IntDir>
     <LibraryPath>$(SolutionDir);$(VC_LibraryPath_x86);$(WindowsSDK_LibraryPath_x86);</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">

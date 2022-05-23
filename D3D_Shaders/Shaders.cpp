@@ -2,16 +2,8 @@
 //
 
 #include "stdafx.h"
-#include <map>
-#include <string>
-#include <vector>
-#include <iostream>
-#include <direct.h>
 
-using namespace std;
-
-FILE *LogFile = NULL;
-bool gLogDebug = false;
+CRITICAL_SECTION gl_CS;
 
 vector<string> enumerateFiles(string pathName, string filter = "") {
 	vector<string> files;
@@ -36,16 +28,21 @@ vector<string> enumerateFiles(string pathName, string filter = "") {
 
 int _tmain(int argc, _TCHAR* argv[])
 {
-	fopen_s(&LogFile, "D3D_Shaders_log.txt", "wb");
-	int shaderNo = 1;
+	int test = sizeof(UINT);
 	vector<string> gameNames;
 	string pathName;
 	vector<string> files;
 	FILE* f;
-	char cwd[MAX_PATH];
 	char gamebuffer[10000];
+	/*
+	DWORD  dBad = 0x00A07E16;
+	DWORD dGood = 0x04207E16;
+	token_operand* tBad  = (token_operand*)&dBad;
+	token_operand* tGood = (token_operand*)&dGood;
 
-	_getcwd(cwd, MAX_PATH);
+	int i = 5 + 5;
+	*/
+	InitializeCriticalSection(&gl_CS);
 	vector<string> lines;
 	fopen_s(&f, "gamelist.txt", "rb");
 	if (f) {
@@ -53,105 +50,93 @@ int _tmain(int argc, _TCHAR* argv[])
 		fclose(f);
 		lines = stringToLines(gamebuffer, fr);
 	}
-
 	if (lines.size() > 0) {
 		for (auto i = lines.begin(); i != lines.end(); i++) {
 			gameNames.push_back(*i);
 		}
-	} else {
-		gameNames.push_back(cwd);
 	}
 	for (DWORD i = 0; i < gameNames.size(); i++) {
 		string gameName = gameNames[i];
-		cout << gameName << ":" << endl;
+		if (gameName[0] == ';')
+			continue;
+		cout << gameName << endl;
 
-		int progress = 0;
 		pathName = gameName;
-		pathName.append("\\ShaderCache\\");
-		files = enumerateFiles(pathName, "????????????????-??.bin");
-		if (files.size() > 0) {
-			cout << "bin->asm: ";
-			for (DWORD i = 0; i < files.size(); i++) {
-				string fileName = files[i];
-
-				auto ASM = disassembler(readFile(fileName));
-
-				fileName.erase(fileName.size() - 3, 3);
-				fileName.append("txt");
-				FILE* f;
-				fopen_s(&f, fileName.c_str(), "wb");
-				fwrite(ASM.data(), 1, ASM.size(), f);
-				fclose(f);
-				
-				int newProgress = 50.0 * i / files.size();
-				if (newProgress > progress) {
-					cout << ".";
-					progress++;
-				}
-			}
-		}
-		cout << endl;
-
-		progress = 0;
-		pathName = gameName;
-		pathName.append("\\ShaderCache\\");
-		files = enumerateFiles(pathName, "????????????????-??.txt");
-		if (files.size() > 0) {
-			cout << "asm->cbo: ";
-			for (DWORD i = 0; i < files.size(); i++) {
-				string fileName = files[i];
-
-				auto ASM = readFile(fileName);
-				fileName.erase(fileName.size() - 3, 3);
-				fileName.append("bin");
-				auto BIN = readFile(fileName);
-				
-				auto CBO = assembler(ASM, BIN);
-
-				fileName.erase(fileName.size() - 3, 3);
-				fileName.append("cbo");
-				FILE* f;
-				fopen_s(&f, fileName.c_str(), "wb");
-				fwrite(CBO.data(), 1, CBO.size(), f);
-				fclose(f);
-
-				int newProgress = 50.0 * i / files.size();
-				if (newProgress > progress) {
-					cout << ".";
-					progress++;
-				}
-			}
-		}
-		cout << endl;
-
-		progress = 0;
-		pathName = gameNames[i];
-		pathName.append("\\Mark\\");
-		files = enumerateFiles(pathName, "*.bin");
-		if (files.size() > 0) {
-			cout << "bin->asm validate: ";
-			for (DWORD i = 0; i < files.size(); i++) {
-				string fileName = files[i];
-
-				auto ASM = disassembler(readFile(fileName));
-
-				fileName.erase(fileName.size() - 3, 3);
-				fileName.append("txt");
-				FILE* f;
-				fopen_s(&f, fileName.c_str(), "wb");
-				fwrite(ASM.data(), 1, ASM.size(), f);
-				fclose(f);
-
-				int newProgress = 50.0 * i / files.size();
-				if (newProgress > progress) {
-					cout << ".";
-					progress++;
-				}
-			}
-		}
-
-		writeLUT();
-		cout << endl;
+		pathName.append("ShaderCache\\");
+		auto newFiles = enumerateFiles(pathName, "????????????????-??.bin");
+		files.insert(files.end(), newFiles.begin(), newFiles.end());
 	}
+
+#pragma omp parallel
+#pragma omp for
+	for (int i = 0; i < files.size(); i++) {
+		string fileName = files[i];
+		EnterCriticalSection(&gl_CS);
+		auto BIN = readFile(fileName);
+		LeaveCriticalSection(&gl_CS);
+		auto ASM = disassembler(BIN);
+		vector<byte> CBO = assembler(ASM, BIN);
+		bool valid = true;
+		if (CBO.size() == BIN.size()) {
+			for (size_t i = 0; i < CBO.size(); i++) {
+				if (CBO[i] != BIN[i]) {
+					valid = false;
+					break;
+				}
+			}
+		}
+		else {
+			valid = false;
+		}
+		if (ASM.size() == 0) {
+			string ASMfilename = fileName;
+			ASMfilename.erase(fileName.size() - 3, 3);
+			ASMfilename.append("error.txt");
+			fopen_s(&f, ASMfilename.c_str(), "wb");
+			fwrite(ASM.data(), 1, ASM.size(), f);
+			fclose(f);
+			continue;
+		}
+		if (ASM[0] == ';') {
+			string ASMfilename = fileName;
+			ASMfilename.erase(fileName.size() - 3, 3);
+			ASMfilename.append("dxil.txt");
+			EnterCriticalSection(&gl_CS);
+			fopen_s(&f, ASMfilename.c_str(), "wb");
+			fwrite(ASM.data(), 1, ASM.size(), f);
+			fclose(f);
+			LeaveCriticalSection(&gl_CS);
+			continue;
+		}
+		else {
+			string ASMfilename = fileName;
+			ASMfilename.erase(fileName.size() - 3, 3);
+			ASMfilename.append("txt");
+			EnterCriticalSection(&gl_CS);
+			fopen_s(&f, ASMfilename.c_str(), "wb");
+			fwrite(ASM.data(), 1, ASM.size(), f);
+			fclose(f);
+			LeaveCriticalSection(&gl_CS);
+			continue;
+		}
+		/*
+		fileName.erase(fileName.size() - 3, 3);
+		fileName.append("fail.txt");
+		if (!valid) {
+			auto ASM2 = disassembler(CBO);
+			if (ASM2.size() > 0) {
+				FILE* f;
+				fopen_s(&f, fileName.c_str(), "wb");
+				fwrite(ASM2.data(), 1, ASM2.size(), f);
+				fclose(f);
+			}
+		}
+		else {
+			DeleteFileA(fileName.c_str());
+		}
+		*/
+	}
+	writeLUT();
+	cout << endl;
 	return 0;
 }
