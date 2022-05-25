@@ -1,14 +1,8 @@
 // proxydll.cpp
 #include "stdafx.h"
 #include "proxydll.h"
-#include <Xinput.h>
-#include <D3Dcompiler.h>
-#include <DirectXMath.h>
-#define _USE_MATH_DEFINES
-#include <math.h>
-#include "resource.h"
+//#include <D3Dcompiler.h>
 #include "..\Nektra\NktHookLib.h"
-#include "..\vkeys.h"
 #include "..\log.h"
 
 // global variables
@@ -19,8 +13,6 @@ bool				gl_hookedDevice = false;
 bool				gl_hookedContext = false;
 bool				gl_dump = false;
 bool				gl_log = false;
-bool				gl_hunt = false;
-bool				gl_cache_shaders = false;
 bool				gl_left = false;
 CRITICAL_SECTION	gl_CS;
 
@@ -38,7 +30,6 @@ float gScreenSize;
 float gFinalSep;
 
 // Our parameters for the stereo parameters texture.
-DirectX::XMFLOAT4	iniParams = { FLT_MAX, FLT_MAX, FLT_MAX, FLT_MAX };
 FILE*				LogFile = NULL;
 #pragma data_seg ()
 
@@ -93,7 +84,6 @@ static UINT64 fnv_64_buf(const void *buf, size_t len)
 
 map<UINT64, bool> isCache;
 map<UINT64, bool> hasStartPatch;
-map<UINT64, bool> hasStartFix;
 
 char cwd[MAX_PATH];
 
@@ -141,8 +131,8 @@ string changeASM(vector<byte> ASM, bool left) {
 				string changeSep = left ? "l(-" + sep + ")" : "l(" + sep + ")";
 				shader +=
 					"add r" + to_string(temp - 2) + ".x, r" + to_string(temp - 1) + ".w, l(-" + conv + ")\n" +
-					"mad " + oReg + ".x, r" + to_string(temp - 2) + ".x, " + changeSep + ", r" + to_string(temp - 1) + ".x\n" +
-					"ret\n";
+					"mad r" + to_string(temp - 2) + ".x, r" + to_string(temp - 2) + ".x, " + changeSep + ", r" + to_string(temp - 1) + ".x\n" +
+					"mov " + oReg + ".x, r" + to_string(temp - 2) + ".x\n";
 			}
 			if (oReg.size() == 0) {
 				// no output
@@ -215,21 +205,6 @@ vector<byte> assembled(char* buffer, const void* pShaderBytecode, SIZE_T Bytecod
 	delete v;
 	return byteCode;
 }
-ID3DBlob* hlsled(char* buffer, char* shdModel) {
-	char path[MAX_PATH];
-	path[0] = 0;
-	strcat_s(path, MAX_PATH, cwd);
-	strcat_s(path, MAX_PATH, "\\ShaderFixes\\");
-	strcat_s(path, MAX_PATH, buffer);
-	strcat_s(path, MAX_PATH, "_replace.txt");
-	vector<byte> file = readFile(path);
-
-	ID3DBlob* pByteCode = nullptr;
-	ID3DBlob* pErrorMsgs = nullptr;
-	HRESULT ret = D3DCompile(file.data(), file.size(), NULL, 0, ((ID3DInclude*)(UINT_PTR)1),
-		"main", shdModel, D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &pByteCode, &pErrorMsgs);
-	return pByteCode;
-}
 
 HRESULT STDMETHODCALLTYPE D3D10_CreateVertexShader(ID3D10Device* This, const void* pShaderBytecode, SIZE_T BytecodeLength, ID3D10VertexShader** ppVertexShader) {
 	UINT64 _crc = fnv_64_buf(pShaderBytecode, BytecodeLength);
@@ -246,11 +221,6 @@ HRESULT STDMETHODCALLTYPE D3D10_CreateVertexShader(ID3D10Device* This, const voi
 		auto data = assembled(buffer, pShaderBytecode, BytecodeLength);
 		bArray = (byte*)data.data();
 		bSize = data.size();
-	}
-	else if (hasStartFix.count(_crc)) {
-		ID3DBlob* pByteCode = hlsled(buffer, "vs_4_0");
-		bArray = (byte*)pByteCode->GetBufferPointer();
-		bSize = pByteCode->GetBufferSize();
 	}
 	else {
 		bArray = (byte*)pShaderBytecode;
@@ -308,10 +278,6 @@ HRESULT STDMETHODCALLTYPE D3D10_CreatePixelShader(ID3D10Device* This, const void
 		auto data = assembled(buffer, pShaderBytecode, BytecodeLength);
 		res = sCreatePixelShader_Hook.fnCreatePixelShader(This, data.data(), data.size(), ppPixelShader);
 	}
-	else if (hasStartFix.count(_crc)) {
-		ID3DBlob* pByteCode = hlsled(buffer, "ps_4_0");
-		res = sCreatePixelShader_Hook.fnCreatePixelShader(This, pByteCode->GetBufferPointer(), pByteCode->GetBufferSize(), ppPixelShader);
-	}
 	else {
 		res = sCreatePixelShader_Hook.fnCreatePixelShader(This, pShaderBytecode, BytecodeLength, ppPixelShader);
 	}
@@ -331,10 +297,6 @@ HRESULT STDMETHODCALLTYPE D3D10_CreateGeometryShader(ID3D10Device* This, const v
 		auto data = assembled(buffer, pShaderBytecode, BytecodeLength);
 		res = sCreateGeometryShader_Hook.fnCreateGeometryShader(This, data.data(), data.size(), ppGeometryShader);
 	}
-	else if (hasStartFix.count(_crc)) {
-		ID3DBlob* pByteCode = hlsled(buffer, "gs_4_0");
-		res = sCreateGeometryShader_Hook.fnCreateGeometryShader(This, pByteCode->GetBufferPointer(), pByteCode->GetBufferSize(), ppGeometryShader);
-	}
 	else {
 		res = sCreateGeometryShader_Hook.fnCreateGeometryShader(This, pShaderBytecode, BytecodeLength, ppGeometryShader);
 	}
@@ -344,6 +306,7 @@ HRESULT STDMETHODCALLTYPE D3D10_CreateGeometryShader(ID3D10Device* This, const v
 
 #pragma region SetShader
 void STDMETHODCALLTYPE D3D10_PSSetShader(ID3D10Device * This, ID3D10PixelShader *pPixelShader) {
+	log("PSSetShader");
 	sPSSetShader_Hook.fnPSSetShader(This, pPixelShader);
 	if (gStereoTextureLeft > 0) {
 		if (gl_left)
@@ -356,6 +319,7 @@ void STDMETHODCALLTYPE D3D10_PSSetShader(ID3D10Device * This, ID3D10PixelShader 
 }
 
 void STDMETHODCALLTYPE D3D10_VSSetShader(ID3D10Device * This, ID3D10VertexShader *pVertexShader) {
+	log("VSSetShader");
 	if (VSOmap.count(pVertexShader) == 1) {
 		VSO* vso = &VSOmap[pVertexShader];
 		if (vso->Neutral) {
@@ -387,6 +351,7 @@ void STDMETHODCALLTYPE D3D10_VSSetShader(ID3D10Device * This, ID3D10VertexShader
 }
 
 void STDMETHODCALLTYPE D3D10_GSSetShader(ID3D10Device * This, ID3D10GeometryShader *pGeometryShader) {
+	log("GSSetShader");
 	sGSSetShader_Hook.fnGSSetShader(This, pGeometryShader);
 	if (gStereoTextureLeft > 0) {
 		if (gl_left)
@@ -583,19 +548,19 @@ void InitInstance()
 		} while (!IsDebuggerPresent());
 	}
 
-	gl_dump = GetPrivateProfileInt("Rendering", "export_binary", gl_dump, INIfile) > 0;
-	gl_log = GetPrivateProfileInt("Logging", "calls", gl_log, INIfile) > 0;
+	gl_dump = GetPrivateProfileInt("Dump", "bin", gl_dump, INIfile) > 0;
+	gl_log = GetPrivateProfileInt("Dump", "log", gl_log, INIfile) > 0;
 
-	if (GetPrivateProfileString("StereoSettings", "StereoSeparation", "50", setting, MAX_PATH, INIfile)) {
+	if (GetPrivateProfileString("Stereo", "StereoSeparation", "50", setting, MAX_PATH, INIfile)) {
 		gSep = stof(setting);
 	}
-	if (GetPrivateProfileString("StereoSettings", "StereoConvergence", "1.0", setting, MAX_PATH, INIfile)) {
+	if (GetPrivateProfileString("Stereo", "StereoConvergence", "1.0", setting, MAX_PATH, INIfile)) {
 		gConv = stof(setting);
 	}
-	if (GetPrivateProfileString("StereoSettings", "EyeDistance", "6.3", setting, MAX_PATH, INIfile)) {
+	if (GetPrivateProfileString("Stereo", "EyeDistance", "6.3", setting, MAX_PATH, INIfile)) {
 		gEyeDist = stof(setting);
 	}
-	if (GetPrivateProfileString("StereoSettings", "ScreenSize", "27", setting, MAX_PATH, INIfile)) {
+	if (GetPrivateProfileString("Stereo", "ScreenSize", "55", setting, MAX_PATH, INIfile)) {
 		gScreenSize = stof(setting);
 	}
 
@@ -603,7 +568,6 @@ void InitInstance()
 		if (LogFile == NULL) {
 			strcat_s(LOGfile, MAX_PATH, "\\d3d10_log.txt");
 			LogFile = _fsopen(LOGfile, "w", _SH_DENYNO);
-			setvbuf(LogFile, NULL, _IONBF, 0);
 		}
 	}
 
@@ -627,17 +591,6 @@ void InitInstance()
 			string sHash = s.substr(0, 16);
 			UINT64 _crc = stoull(sHash, NULL, 16);
 			hasStartPatch[_crc] = true;
-		} while (FindNextFile(hFind, &findFileData));
-		FindClose(hFind);
-	}
-
-	hFind = FindFirstFile("ShaderFixes\\????????????????-??_replace.txt", &findFileData);
-	if (hFind != INVALID_HANDLE_VALUE) {
-		do {
-			string s = findFileData.cFileName;
-			string sHash = s.substr(0, 16);
-			UINT64 _crc = stoull(sHash, NULL, 16);
-			hasStartFix[_crc] = true;
 		} while (FindNextFile(hFind, &findFileData));
 		FindClose(hFind);
 	}

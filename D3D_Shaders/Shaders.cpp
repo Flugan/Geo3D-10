@@ -119,7 +119,6 @@ int _tmain(int argc, _TCHAR* argv[])
 			LeaveCriticalSection(&gl_CS);
 			continue;
 		}
-		/*
 		fileName.erase(fileName.size() - 3, 3);
 		fileName.append("fail.txt");
 		if (!valid) {
@@ -134,7 +133,6 @@ int _tmain(int argc, _TCHAR* argv[])
 		else {
 			DeleteFileA(fileName.c_str());
 		}
-		*/
 	}
 	writeLUT();
 	cout << endl;
