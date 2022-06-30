@@ -34,6 +34,9 @@
     <ClInclude Include="proxydll.h" />
     <ClInclude Include="stdafx.h" />
   </ItemGroup>
+  <ItemGroup>
+    <Text Include="ID3D10DeviceVtbl.txt" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{CDD0FB7B-F24F-4559-841E-97DCBF9AAEA0}</ProjectGuid>
     <RootNamespace>D3D10</RootNamespace>
